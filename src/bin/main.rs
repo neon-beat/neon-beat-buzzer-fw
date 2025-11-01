@@ -13,7 +13,8 @@ use esp_hal::timer::timg::TimerGroup;
 use log::info;
 
 #[panic_handler]
-fn panic(_: &core::panic::PanicInfo) -> ! {
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    info!("{}", info);
     loop {}
 }
 
