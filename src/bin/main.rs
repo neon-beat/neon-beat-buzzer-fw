@@ -10,6 +10,7 @@ use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
 use esp_hal::timer::timg::TimerGroup;
+use log::info;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -26,6 +27,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 async fn main(spawner: Spawner) -> ! {
     // generator version: 1.0.0
 
+    esp_println::logger::init_logger_from_env();
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
@@ -41,11 +43,14 @@ async fn main(spawner: Spawner) -> ! {
         esp_radio::wifi::new(&radio_init, peripherals.WIFI, Default::default())
             .expect("Failed to initialize Wi-Fi controller");
 
+    info!("Buzzer initialized");
     // TODO: Spawn some tasks
     let _ = spawner;
 
     loop {
         Timer::after(Duration::from_secs(1)).await;
+        info!("Running...");
+
     }
 
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0/examples/src/bin

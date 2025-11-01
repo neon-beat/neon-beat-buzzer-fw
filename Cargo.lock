@@ -223,6 +223,7 @@ dependencies = [
  "document-features",
  "embassy-executor-macros",
  "embassy-executor-timer-queue",
+ "log",
 ]
 
 [[package]]
@@ -271,6 +272,7 @@ dependencies = [
  "embedded-io-async 0.6.1",
  "embedded-nal-async",
  "heapless 0.8.0",
+ "log",
  "managed",
  "smoltcp",
 ]
@@ -323,6 +325,7 @@ dependencies = [
  "embedded-hal 1.0.0",
  "embedded-hal-async",
  "futures-core",
+ "log",
 ]
 
 [[package]]
@@ -499,6 +502,7 @@ dependencies = [
  "esp-metadata-generated",
  "esp-rom-sys",
  "jiff",
+ "log",
  "strum",
 ]
 
@@ -555,6 +559,7 @@ dependencies = [
  "esp32s3",
  "fugit",
  "instability",
+ "log",
  "nb 1.1.0",
  "paste",
  "portable-atomic",
@@ -600,6 +605,20 @@ dependencies = [
  "esp-metadata-generated",
  "esp-sync",
  "esp-wifi-sys",
+ "log",
+]
+
+[[package]]
+name = "esp-println"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a30e6c9fbcc01c348d46706fef8131c7775ab84c254a3cd65d0cd3f6414d592"
+dependencies = [
+ "document-features",
+ "esp-metadata-generated",
+ "esp-sync",
+ "log",
+ "portable-atomic",
 ]
 
 [[package]]
@@ -628,6 +647,7 @@ dependencies = [
  "esp-wifi-sys",
  "heapless 0.9.1",
  "instability",
+ "log",
  "num-derive",
  "num-traits",
  "portable-atomic",
@@ -683,6 +703,7 @@ dependencies = [
  "esp-metadata-generated",
  "esp-radio-rtos-driver",
  "esp-sync",
+ "log",
  "portable-atomic",
 ]
 
@@ -708,6 +729,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89b6544f6f0cb86169d1f93ba2101a8d50358a040c5043676ed86b793e09b12c"
 dependencies = [
  "anyhow",
+ "log",
 ]
 
 [[package]]
@@ -1014,8 +1036,10 @@ dependencies = [
  "esp-alloc",
  "esp-bootloader-esp-idf",
  "esp-hal",
+ "esp-println",
  "esp-radio",
  "esp-rtos",
+ "log",
  "smoltcp",
  "static_cell",
 ]
@@ -1269,6 +1293,7 @@ dependencies = [
  "byteorder",
  "cfg-if",
  "heapless 0.8.0",
+ "log",
  "managed",
 ]
 

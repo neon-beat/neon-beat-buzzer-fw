@@ -10,7 +10,7 @@ The project has been generated thanks to
 command:
 
 ```sh
-$ esp-generate --headless -c esp32c3 -o unstable-hal -o alloc -o wifi -o embassy neon-beat-buzzer
+$ esp-generate --headless -c esp32c3 -o unstable-hal -o alloc -o wifi -o embassy -o log neon-beat-buzzer
 ```
 
 ## Build and run the project
