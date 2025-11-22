@@ -3,6 +3,8 @@ runner = "espflash flash --monitor --chip esp32c3"
 
 [env]
 ESP_LOG="info"
+SSID="nb_ap"
+PASSWORD="nb_ap14789"
 
 [build]
 rustflags = [
