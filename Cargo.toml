@@ -4,10 +4,6 @@ name         = "neon-beat-buzzer"
 rust-version = "1.88"
 version      = "0.1.0"
 
-[[bin]]
-name = "neon-beat-buzzer"
-path = "./src/bin/main.rs"
-
 [dependencies]
 # esp-hal = { version = "1.0.0", features = ["esp32c3", "log-04", "unstable"] }
 esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev = "223815270092663682a151a1b285665587a3d5dd", features = ["esp32c3", "log-04", "unstable"] }
