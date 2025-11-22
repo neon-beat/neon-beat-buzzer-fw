@@ -9,9 +9,11 @@ name = "neon-beat-buzzer"
 path = "./src/bin/main.rs"
 
 [dependencies]
-esp-hal = { version = "1.0.0", features = ["esp32c3", "log-04", "unstable"] }
+# esp-hal = { version = "1.0.0", features = ["esp32c3", "log-04", "unstable"] }
+esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev = "223815270092663682a151a1b285665587a3d5dd", features = ["esp32c3", "log-04", "unstable"] }
 
-esp-rtos = { version = "0.2.0", features = [
+# esp-rtos = { version = "0.2.0", features = [
+esp-rtos = { git = "https://github.com/esp-rs/esp-hal", rev = "223815270092663682a151a1b285665587a3d5dd", features = [
   "embassy",
   "esp-alloc",
   "esp-radio",
@@ -19,7 +21,8 @@ esp-rtos = { version = "0.2.0", features = [
   "log-04"
 ] }
 
-esp-bootloader-esp-idf = { version = "0.4.0", features = ["esp32c3", "log-04"] }
+# esp-bootloader-esp-idf = { version = "0.4.0", features = ["esp32c3", "log-04"] }
+esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", rev = "223815270092663682a151a1b285665587a3d5dd", features = ["esp32c3", "log-04"] }
 log = "0.4.27"
 
 embassy-net = { version = "0.7.1", features = [
@@ -31,12 +34,15 @@ embassy-net = { version = "0.7.1", features = [
 ] }
 embedded-io = "0.7.1"
 embedded-io-async = "0.7.0"
-esp-alloc = "0.9.0"
-esp-println = { version = "0.16.1", features = ["esp32c3", "log-04"] }
+# esp-alloc = "0.9.0"
+esp-alloc = { git = "https://github.com/esp-rs/esp-hal", rev = "223815270092663682a151a1b285665587a3d5dd"}
+# esp-println = { version = "0.16.1", features = ["esp32c3", "log-04"] }
+esp-println = { git = "https://github.com/esp-rs/esp-hal", rev = "223815270092663682a151a1b285665587a3d5dd", features = ["esp32c3", "log-04"] }
 # for more networking protocol support see https://crates.io/crates/edge-net
 embassy-executor = { version = "0.9.1", features = ["log"] }
 embassy-time = { version = "0.5.0", features = ["log"] }
-esp-radio = { version = "0.17.0", features = [
+# esp-radio = { version = "0.17.0", features = [
+esp-radio = { git = "https://github.com/esp-rs/esp-hal", rev = "223815270092663682a151a1b285665587a3d5dd", features = [
   "esp-alloc",
   "esp32c3",
   "log-04",
