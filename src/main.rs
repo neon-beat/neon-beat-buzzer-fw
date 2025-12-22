@@ -8,17 +8,21 @@
 )]
 
 mod network;
-use self::network::connection as connection;
-use self::network::net_task as net_task;
+use self::network::connection;
+use self::network::net_task;
+mod button;
+use self::button::button_interrupt_handler;
+use self::button::button_task;
 
 use embassy_executor::Spawner;
 use embassy_net::StackResources;
 use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
+use esp_hal::gpio::Io;
 use esp_hal::rng::Rng;
 use esp_hal::timer::timg::TimerGroup;
-use log::info;
 use esp_radio::Controller;
+use log::info;
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
@@ -63,6 +67,9 @@ async fn main(spawner: Spawner) -> ! {
         esp_radio::wifi::new(&radio_init, peripherals.WIFI, Default::default())
             .expect("Failed to initialize Wi-Fi controller");
 
+    let mut io = Io::new(peripherals.IO_MUX);
+    io.set_interrupt_handler(button_interrupt_handler);
+
     info!("Buzzer initialized");
     let config = embassy_net::Config::dhcpv4(Default::default());
     let rng = Rng::new();
@@ -75,6 +82,7 @@ async fn main(spawner: Spawner) -> ! {
     );
     spawner.spawn(connection(wifi_controller)).ok();
     spawner.spawn(net_task(runner)).ok();
+    spawner.spawn(button_task(peripherals.GPIO2.into())).ok();
 
     loop {
         if stack.is_link_up() {
