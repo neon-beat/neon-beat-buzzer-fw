@@ -1,16 +1,15 @@
-use core::matches;
+use core::convert::Into;
+use core::default::Default;
 use core::env;
 use core::marker::Sized;
+use core::matches;
+use core::result::Result::{Err, Ok};
 use embassy_net::Runner;
-use core::convert::Into;
-use core::result::Result::{Ok, Err};
-use core::default::Default;
-use esp_radio:: wifi::{
-        ClientConfig, ModeConfig, ScanConfig, WifiController, WifiDevice, WifiEvent, WifiStaState,
+use embassy_time::{Duration, Timer};
+use esp_radio::wifi::{
+    ClientConfig, ModeConfig, ScanConfig, WifiController, WifiDevice, WifiEvent, WifiStaState,
 };
 use log::info;
-use embassy_time::{Timer, Duration};
-
 
 // TODO: move those in config
 const SSID: &str = env!("SSID");
@@ -27,9 +26,9 @@ pub async fn connection(mut controller: WifiController<'static>) {
     info!("Device capabilities: {:?}", controller.capabilities());
     loop {
         if esp_radio::wifi::sta_state() == WifiStaState::Connected {
-                // wait until we're no longer connected
-                controller.wait_for_event(WifiEvent::StaDisconnected).await;
-                Timer::after(Duration::from_millis(5000)).await
+            // wait until we're no longer connected
+            controller.wait_for_event(WifiEvent::StaDisconnected).await;
+            Timer::after(Duration::from_millis(5000)).await
         }
         if !matches!(controller.is_started(), Ok(true)) {
             let client_config = ModeConfig::Client(
