@@ -4,6 +4,9 @@ use esp_hal::{
     gpio::{AnyPin, Event, Input, InputConfig, Pull},
     handler, ram,
 };
+use log::warn;
+
+use embassy_time::{Duration, Timer};
 
 static BUTTON: Mutex<RefCell<Option<Input>>> = Mutex::new(RefCell::new(None));
 
@@ -17,7 +20,8 @@ pub async fn button_task(pin: AnyPin<'static>) {
     });
 
     loop {
-        todo!("Button debounce logic");
+        warn!("Button debounce logic");
+        Timer::after(Duration::from_millis(200)).await;
     }
 }
 
