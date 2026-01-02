@@ -1,4 +1,4 @@
-use alloc::string::ToString;
+use alloc::{format, string::ToString};
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_net::{Ipv4Address, Stack, tcp::TcpSocket};
@@ -40,11 +40,13 @@ impl Websocket {
         res
     }
 
-    pub async fn send_identify(&mut self, mac: &str) {
+    pub async fn send_identify(&mut self, mac: &[u8; 6]) {
         let data = sj::json!({
             "type": "identification",
-            "id": mac
+            "id": format!("{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5])
         });
+        info!("Sending message {data}");
         self.tx_channel.send(data).await;
     }
 }

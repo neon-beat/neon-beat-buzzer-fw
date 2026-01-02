@@ -113,7 +113,8 @@ async fn main(spawner: Spawner) -> ! {
         match channel.receive().await {
             WebsocketEvent::Connected => {
                 info!("Buzzer is now connected to NBC");
-                ws.send_identify("aabbccddeeff").await;
+                let mac = esp_hal::efuse::Efuse::mac_address();
+                ws.send_identify(&mac).await;
             }
             WebsocketEvent::Disconnected => info!("Buzzer is now disconnected from NBC"),
         }
