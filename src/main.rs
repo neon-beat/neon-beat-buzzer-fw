@@ -12,7 +12,6 @@ use crate::websocket::WebsocketEvent;
 use self::network::connection;
 use self::network::net_task;
 mod button;
-use self::button::button_interrupt_handler;
 use self::button::button_task;
 mod websocket;
 use self::websocket::Websocket;
@@ -23,7 +22,6 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
-use esp_hal::gpio::Io;
 use esp_hal::rng::Rng;
 use esp_hal::timer::timg::TimerGroup;
 use esp_radio::Controller;
@@ -74,9 +72,6 @@ async fn main(spawner: Spawner) -> ! {
     let (wifi_controller, wifi_interfaces) =
         esp_radio::wifi::new(radio_init, peripherals.WIFI, Default::default())
             .expect("Failed to initialize Wi-Fi controller");
-
-    let mut io = Io::new(peripherals.IO_MUX);
-    io.set_interrupt_handler(button_interrupt_handler);
 
     info!("Buzzer initialized");
     let config = embassy_net::Config::dhcpv4(Default::default());

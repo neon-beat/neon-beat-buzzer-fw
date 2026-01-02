@@ -1,48 +1,21 @@
-use core::cell::RefCell;
-use critical_section::Mutex;
-use esp_hal::{
-    gpio::{AnyPin, Event, Input, InputConfig, Pull},
-    handler, ram,
-};
-
-use embassy_time::{Duration, Timer};
-
-static BUTTON: Mutex<RefCell<Option<Input>>> = Mutex::new(RefCell::new(None));
+use embassy_time::Timer;
+use esp_hal::gpio::{AnyPin, Input, InputConfig, Pull};
+use log::info;
 
 #[embassy_executor::task]
 pub async fn button_task(pin: AnyPin<'static>) {
     let config = InputConfig::default().with_pull(Pull::Up);
+    let mut pushed = false;
     let mut button = Input::new(pin, config);
-    critical_section::with(|cs| {
-        button.listen(Event::FallingEdge);
-        BUTTON.borrow_ref_mut(cs).replace(button)
-    });
-
     loop {
-        Timer::after(Duration::from_millis(200)).await;
+        button.wait_for_falling_edge().await;
+        if !pushed {
+            info!("Button pushed !");
+        }
+        /* Quick and dirty deboucing, enough as long as we only need to
+         * detect single, short presses
+         */
+        Timer::after_millis(100).await;
+        pushed = button.is_low();
     }
-}
-
-#[handler]
-#[ram]
-pub fn button_interrupt_handler() {
-    if critical_section::with(|cs| {
-        BUTTON
-            .borrow_ref_mut(cs)
-            .as_mut()
-            .unwrap()
-            .is_interrupt_set()
-    }) {
-        esp_println::println!("Button was the source of the interrupt");
-    } else {
-        esp_println::println!("Button was not the source of the interrupt");
-    }
-
-    critical_section::with(|cs| {
-        BUTTON
-            .borrow_ref_mut(cs)
-            .as_mut()
-            .unwrap()
-            .clear_interrupt()
-    });
 }
