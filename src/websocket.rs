@@ -46,7 +46,14 @@ impl Websocket {
             "id": format!("{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5])
         });
-        info!("Sending message {data}");
+        self.tx_channel.send(data).await;
+    }
+    pub async fn send_button_pushed(&mut self, mac: &[u8; 6]) {
+        let data = sj::json!({
+            "type": "buzz",
+            "id": format!("{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5])
+        });
         self.tx_channel.send(data).await;
     }
 }
@@ -150,6 +157,7 @@ pub async fn websocket_task(
                         }
                     },
                     Either::Second(x) => {
+                        info!("Sending message {:?}", x.to_string());
                         let res = client.write(
                             ws::WebSocketSendMessageType::Text,
                             true,
@@ -159,7 +167,7 @@ pub async fn websocket_task(
                         match res {
                             Ok(count) => match socket.write(&buffer[..count]).await {
                                 Err(e) => error!("Failed to send message: {:?}", e),
-                                _ => info!("Sent identify message"),
+                                _ => info!("Message sent"),
                             },
                             Err(e) => error!("Failed to send message: {:?}", e),
                         }

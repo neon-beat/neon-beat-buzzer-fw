@@ -17,6 +17,7 @@ mod websocket;
 use self::websocket::Websocket;
 
 use embassy_executor::Spawner;
+use embassy_futures::select::{Either, select};
 use embassy_net::StackResources;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
@@ -48,7 +49,8 @@ macro_rules! mk_static {
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
-static CHANNEL: StaticCell<Channel<NoopRawMutex, WebsocketEvent, 3>> = StaticCell::new();
+static WS_CHANNEL: StaticCell<Channel<NoopRawMutex, WebsocketEvent, 3>> = StaticCell::new();
+static BUTTON_CHANNEL: StaticCell<Channel<NoopRawMutex, bool, 1>> = StaticCell::new();
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
@@ -85,7 +87,13 @@ async fn main(spawner: Spawner) -> ! {
     );
     spawner.spawn(connection(wifi_controller)).ok();
     spawner.spawn(net_task(runner)).ok();
-    spawner.spawn(button_task(peripherals.GPIO2.into())).ok();
+    let button_channel: &'static mut _ = BUTTON_CHANNEL.init(Channel::new());
+    spawner
+        .spawn(button_task(
+            peripherals.GPIO2.into(),
+            button_channel.sender(),
+        ))
+        .ok();
 
     loop {
         if stack.is_link_up() {
@@ -101,17 +109,22 @@ async fn main(spawner: Spawner) -> ! {
     let address = stack.config_v4().unwrap().address;
     info!("Got IP: {address}");
 
-    let channel: &'static mut _ = CHANNEL.init(Channel::new());
-    let mut ws = Websocket::new(&spawner, stack, channel.sender());
+    let ws_channel: &'static mut _ = WS_CHANNEL.init(Channel::new());
+    let mut ws = Websocket::new(&spawner, stack, ws_channel.sender());
+    let mac = esp_hal::efuse::Efuse::mac_address();
 
     loop {
-        match channel.receive().await {
-            WebsocketEvent::Connected => {
+        match select(ws_channel.receive(), button_channel.receive()).await {
+            Either::First(WebsocketEvent::Connected) => {
                 info!("Buzzer is now connected to NBC");
-                let mac = esp_hal::efuse::Efuse::mac_address();
                 ws.send_identify(&mac).await;
             }
-            WebsocketEvent::Disconnected => info!("Buzzer is now disconnected from NBC"),
+            Either::First(WebsocketEvent::Disconnected) => {
+                info!("Buzzer is now disconnected from NBC")
+            }
+            Either::Second(_) => {
+                ws.send_button_pushed(&mac).await;
+            }
         }
     }
 }
