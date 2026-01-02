@@ -4,7 +4,6 @@ use esp_hal::{
     gpio::{AnyPin, Event, Input, InputConfig, Pull},
     handler, ram,
 };
-use log::warn;
 
 use embassy_time::{Duration, Timer};
 
@@ -20,7 +19,6 @@ pub async fn button_task(pin: AnyPin<'static>) {
     });
 
     loop {
-        warn!("Button debounce logic");
         Timer::after(Duration::from_millis(200)).await;
     }
 }

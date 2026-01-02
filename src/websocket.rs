@@ -1,0 +1,169 @@
+use alloc::string::ToString;
+use embassy_executor::Spawner;
+use embassy_futures::select::{Either, select};
+use embassy_net::{Ipv4Address, Stack, tcp::TcpSocket};
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::channel::{Channel, Receiver, Sender};
+use embedded_websocket as ws;
+use esp_hal::rng::Rng;
+use log::{error, info, warn};
+use serde_json as sj;
+use static_cell::StaticCell;
+
+const BUF_SIZE: usize = 512;
+
+pub struct Websocket {
+    tx_channel: Sender<'static, NoopRawMutex, sj::Value, 3>,
+}
+
+pub enum WebsocketEvent {
+    Connected,
+    Disconnected,
+}
+
+static CHANNEL: StaticCell<Channel<NoopRawMutex, sj::Value, 3>> = StaticCell::new();
+
+impl Websocket {
+    pub fn new(
+        spawner: &Spawner,
+        stack: Stack<'static>,
+        rx_channel: Sender<'static, NoopRawMutex, WebsocketEvent, 3>,
+    ) -> Self {
+        let tx_channel: &'static mut _ = CHANNEL.init(Channel::new());
+        let res = Websocket {
+            tx_channel: tx_channel.sender(),
+        };
+        let result = spawner.spawn(websocket_task(stack, rx_channel, tx_channel.receiver()));
+        if let Err(e) = result {
+            error!("Failed to spawn websocket task: {:?}", e);
+        }
+        res
+    }
+
+    pub async fn send_identify(&mut self, mac: &str) {
+        let data = sj::json!({
+            "type": "identification",
+            "id": mac
+        });
+        self.tx_channel.send(data).await;
+    }
+}
+
+#[embassy_executor::task]
+pub async fn websocket_task(
+    stack: Stack<'static>,
+    rx_channel: Sender<'static, NoopRawMutex, WebsocketEvent, 3>,
+    tx_channel: Receiver<'static, NoopRawMutex, sj::Value, 3>,
+) {
+    let mut rx_buffer: [u8; BUF_SIZE] = [0; BUF_SIZE];
+    let mut tx_buffer: [u8; BUF_SIZE] = [0; BUF_SIZE];
+    let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
+    let mut client = ws::WebSocketClient::new_client(Rng::new());
+    let mut connected: bool = false;
+    let mut ws_key: ws::WebSocketKey;
+
+    info!("Starting websocket task");
+    loop {
+        let remote = (Ipv4Address::new(192, 168, 66, 1), 8080);
+        let res = socket.connect(remote).await;
+        if let Err(e) = res {
+            error!("Failed to connect to TCP server: {:?}", e);
+            continue;
+        }
+        info!("Connected to TCP server");
+        while socket.state() == embassy_net::tcp::State::Established {
+            let mut buffer: [u8; BUF_SIZE] = [0; BUF_SIZE];
+            let websocket_options = ws::WebSocketOptions {
+                path: "/ws",
+                host: "192.168.66.1",
+                origin: "http://localhost:1337",
+                sub_protocols: None,
+                additional_headers: None,
+            };
+            let res = client.client_connect(&websocket_options, &mut buffer);
+            match res {
+                Err(e) => {
+                    error!("Failed to generate connect message: {:?}", e);
+                    continue;
+                }
+                Ok((count, key)) => {
+                    let res = socket.write(&buffer[..count]).await;
+                    match res {
+                        Err(e) => {
+                            error!("Failed to connect to websocket server: {:?}", e);
+                            continue;
+                        }
+                        Ok(_) => ws_key = key,
+                    }
+                }
+            }
+            loop {
+                match select(socket.read(&mut buffer), tx_channel.receive()).await {
+                    Either::First(x) => match x {
+                        Ok(0) => {
+                            info!("Socket is closed");
+                            let res = client.close(
+                                ws::WebSocketCloseStatusCode::NormalClosure,
+                                None,
+                                &mut buffer,
+                            );
+                            if let Err(e) = res {
+                                error!("Failed to close client after TCP disconnect: {:?}", e);
+                            }
+                            socket.abort();
+                            connected = false;
+                            rx_channel.send(WebsocketEvent::Disconnected).await;
+                            break;
+                        }
+                        Err(e) => {
+                            error!("Can not read socket: {:?}", e);
+                            continue;
+                        }
+                        Ok(count) => {
+                            if !connected {
+                                let res = client.client_accept(&ws_key, &buffer[..count]);
+                                match res {
+                                    Ok(_) => {
+                                        connected = true;
+                                        info!("Connected to WS server");
+                                        rx_channel.send(WebsocketEvent::Connected).await;
+                                    }
+                                    Err(e) => error!("Can not accept connection: {:?}", e),
+                                }
+                            } else {
+                                let mut frame: [u8; BUF_SIZE] = [0; BUF_SIZE];
+                                if let Ok(x) = client.read(&buffer, &mut frame) {
+                                    warn!(
+                                        "Unprocessed message: {:?}",
+                                        str::from_utf8(&frame[..x.len_to])
+                                            .unwrap_or("invalid string")
+                                    );
+                                } else {
+                                    error!(
+                                        "Failed to decode receveid message {:?}",
+                                        &buffer[..count]
+                                    );
+                                }
+                            }
+                        }
+                    },
+                    Either::Second(x) => {
+                        let res = client.write(
+                            ws::WebSocketSendMessageType::Text,
+                            true,
+                            x.to_string().as_bytes(),
+                            &mut buffer,
+                        );
+                        match res {
+                            Ok(count) => match socket.write(&buffer[..count]).await {
+                                Err(e) => error!("Failed to send message: {:?}", e),
+                                _ => info!("Sent identify message"),
+                            },
+                            Err(e) => error!("Failed to send message: {:?}", e),
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

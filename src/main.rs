@@ -7,14 +7,20 @@
 )]
 
 mod network;
+use crate::websocket::WebsocketEvent;
+
 use self::network::connection;
 use self::network::net_task;
 mod button;
 use self::button::button_interrupt_handler;
 use self::button::button_task;
+mod websocket;
+use self::websocket::Websocket;
 
 use embassy_executor::Spawner;
 use embassy_net::StackResources;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::Io;
@@ -22,6 +28,7 @@ use esp_hal::rng::Rng;
 use esp_hal::timer::timg::TimerGroup;
 use esp_radio::Controller;
 use log::info;
+use static_cell::StaticCell;
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
@@ -42,6 +49,8 @@ macro_rules! mk_static {
 }
 
 esp_bootloader_esp_idf::esp_app_desc!();
+
+static CHANNEL: StaticCell<Channel<NoopRawMutex, WebsocketEvent, 3>> = StaticCell::new();
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
@@ -91,16 +100,22 @@ async fn main(spawner: Spawner) -> ! {
     }
 
     info!("Waiting to get IP address...");
-    loop {
-        if let Some(config) = stack.config_v4() {
-            info!("Got IP: {}", config.address);
-            break;
-        }
-        Timer::after(Duration::from_millis(500)).await;
+    while stack.config_v4().is_none() {
+        Timer::after_secs(1).await;
     }
+    let address = stack.config_v4().unwrap().address;
+    info!("Got IP: {address}");
+
+    let channel: &'static mut _ = CHANNEL.init(Channel::new());
+    let mut ws = Websocket::new(&spawner, stack, channel.sender());
 
     loop {
-        info!("Running...");
-        Timer::after(Duration::from_secs(10)).await;
+        match channel.receive().await {
+            WebsocketEvent::Connected => {
+                info!("Buzzer is now connected to NBC");
+                ws.send_identify("aabbccddeeff").await;
+            }
+            WebsocketEvent::Disconnected => info!("Buzzer is now disconnected from NBC"),
+        }
     }
 }
