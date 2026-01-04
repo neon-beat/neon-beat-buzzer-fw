@@ -63,6 +63,7 @@ serde_json = { version = "1.0.148", default-features = false, features = ["alloc
 embassy-futures = "0.1.2"
 esp-hal-smartled = { version = "0.17.0", features = ["esp32c3"] }
 smart-leds = "0.4.0"
+libm = "0.2.15"
 
 [patch.crates-io]
 esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev="223815270092663682a151a1b285665587a3d5dd" }

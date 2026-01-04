@@ -93,10 +93,10 @@ async fn main(spawner: Spawner) -> ! {
     let rmt = Rmt::new(peripherals.RMT, Rate::from_mhz(80)).unwrap();
     let mut led = Led::new(&spawner, rmt.into_async(), peripherals.GPIO3);
     let blink = LedCmd::Blink {
-        color: RGB::new(0, 255, 0),
-        duration: Duration::from_secs(5),
-        period: Duration::from_secs(1),
-        duty_cycle: 10,
+        color: RGB::new(255, 255, 0),
+        duration: Duration::from_secs(0),
+        period: Duration::from_millis(500),
+        duty_cycle: 50,
     };
     led.set(blink).await;
     spawner.spawn(connection(wifi_controller)).ok();
@@ -122,6 +122,13 @@ async fn main(spawner: Spawner) -> ! {
     }
     let address = stack.config_v4().unwrap().address;
     info!("Got IP: {address}");
+    let wave = LedCmd::Wave {
+        color: RGB::new(255, 255, 0),
+        duration: Duration::from_secs(0),
+        period: Duration::from_secs(1),
+        duty_cycle: 50,
+    };
+    led.set(wave).await;
 
     let ws_channel: &'static mut _ = WS_CHANNEL.init(Channel::new());
     let mut ws = Websocket::new(&spawner, stack, ws_channel.sender());
