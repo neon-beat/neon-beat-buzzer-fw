@@ -61,6 +61,8 @@ embassy-sync = "0.7.2"
 serde = { version = "1.0.228", default-features = false }
 serde_json = { version = "1.0.148", default-features = false, features = ["alloc"] }
 embassy-futures = "0.1.2"
+esp-hal-smartled = { version = "0.17.0", features = ["esp32c3"] }
+smart-leds = "0.4.0"
 
 [patch.crates-io]
 esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev="223815270092663682a151a1b285665587a3d5dd" }
@@ -68,6 +70,7 @@ esp-rtos = { git = "https://github.com/esp-rs/esp-hal", rev="223815270092663682a
 esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", rev="223815270092663682a151a1b285665587a3d5dd" }
 esp-alloc = { git = "https://github.com/esp-rs/esp-hal", rev="223815270092663682a151a1b285665587a3d5dd" }
 esp-radio = { git = "https://github.com/esp-rs/esp-hal", rev="223815270092663682a151a1b285665587a3d5dd" }
+esp-hal-smartled = { path = "../esp-hal-community/esp-hal-smartled" }
 
 [profile.dev]
 # Rust debug is too slow.

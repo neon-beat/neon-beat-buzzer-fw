@@ -7,14 +7,17 @@
 )]
 
 mod network;
-use crate::websocket::WebsocketEvent;
+
+use crate::led::LedCmd;
 
 use self::network::connection;
 use self::network::net_task;
 mod button;
 use self::button::button_task;
 mod websocket;
-use self::websocket::Websocket;
+use self::websocket::{Websocket, WebsocketEvent};
+mod led;
+use self::led::{Led, RGB};
 
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
@@ -23,7 +26,9 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
+use esp_hal::rmt::Rmt;
 use esp_hal::rng::Rng;
+use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
 use esp_radio::Controller;
 use log::info;
@@ -85,6 +90,15 @@ async fn main(spawner: Spawner) -> ! {
         mk_static!(StackResources<3>, StackResources::<3>::new()),
         seed,
     );
+    let rmt = Rmt::new(peripherals.RMT, Rate::from_mhz(80)).unwrap();
+    let mut led = Led::new(&spawner, rmt.into_async(), peripherals.GPIO3);
+    let blink = LedCmd::Blink {
+        color: RGB::new(0, 255, 0),
+        duration: Duration::from_secs(5),
+        period: Duration::from_secs(1),
+        duty_cycle: 10,
+    };
+    led.set(blink).await;
     spawner.spawn(connection(wifi_controller)).ok();
     spawner.spawn(net_task(runner)).ok();
     let button_channel: &'static mut _ = BUTTON_CHANNEL.init(Channel::new());
