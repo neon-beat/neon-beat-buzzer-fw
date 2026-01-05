@@ -6,18 +6,15 @@
     holding buffers for the duration of a data transfer."
 )]
 
-mod network;
-
-use crate::led::LedCmd;
-
-use self::network::connection;
-use self::network::net_task;
 mod button;
-use self::button::button_task;
-mod websocket;
-use self::websocket::{Websocket, WebsocketEvent};
 mod led;
-use self::led::{Led, RGB};
+mod network;
+mod websocket;
+
+use crate::button::button_task;
+use crate::led::{Led, LedCmd, RGB};
+use crate::network::{connection, net_task};
+use crate::websocket::{Websocket, WebsocketEvent};
 
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
