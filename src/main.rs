@@ -19,14 +19,10 @@ use crate::websocket::{Websocket, WebsocketEvent};
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_net::StackResources;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::channel::Channel;
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Channel};
 use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
-use esp_hal::rmt::Rmt;
-use esp_hal::rng::Rng;
-use esp_hal::time::Rate;
-use esp_hal::timer::timg::TimerGroup;
+use esp_hal::{rmt::Rmt, rng::Rng, time::Rate, timer::timg::TimerGroup};
 use esp_radio::Controller;
 use log::{error, info};
 use static_cell::StaticCell;
@@ -91,9 +87,6 @@ async fn main(spawner: Spawner) -> ! {
         }
         Timer::after(Duration::from_millis(500)).await;
     }
-
-    // TODO: what if I move a value to a task, if it has been created in main task ? Why would it
-    // need a static lifetime ?
 
     info!("Waiting to get IP address...");
     while stack.config_v4().is_none() {
