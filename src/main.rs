@@ -12,7 +12,7 @@ mod network;
 mod websocket;
 
 use crate::button::button_task;
-use crate::led::{Led, LedCmd, RGB};
+use crate::led::Led;
 use crate::network::{connection, net_task};
 use crate::websocket::{Websocket, WebsocketEvent};
 
@@ -28,7 +28,7 @@ use esp_hal::rng::Rng;
 use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
 use esp_radio::Controller;
-use log::info;
+use log::{error, info};
 use static_cell::StaticCell;
 
 #[panic_handler]
@@ -75,13 +75,6 @@ async fn main(spawner: Spawner) -> ! {
     let (stack, runner) = embassy_net::new(wifi_interfaces.sta, config, resources, seed);
     let rmt = Rmt::new(peripherals.RMT, Rate::from_mhz(80)).unwrap();
     let mut led = Led::new(&spawner, rmt.into_async(), peripherals.GPIO3);
-    let blink = LedCmd::Blink {
-        color: RGB::new(255, 255, 0),
-        duration: Duration::from_secs(0),
-        period: Duration::from_millis(500),
-        duty_cycle: 50,
-    };
-    led.set(blink).await;
     spawner.spawn(connection(wifi_controller)).ok();
     spawner.spawn(net_task(runner)).ok();
 
@@ -99,19 +92,15 @@ async fn main(spawner: Spawner) -> ! {
         Timer::after(Duration::from_millis(500)).await;
     }
 
+    // TODO: what if I move a value to a task, if it has been created in main task ? Why would it
+    // need a static lifetime ?
+
     info!("Waiting to get IP address...");
     while stack.config_v4().is_none() {
         Timer::after_secs(1).await;
     }
     let address = stack.config_v4().unwrap().address;
     info!("Got IP: {address}");
-    let wave = LedCmd::Wave {
-        color: RGB::new(255, 255, 0),
-        duration: Duration::from_secs(0),
-        period: Duration::from_secs(1),
-        duty_cycle: 50,
-    };
-    led.set(wave).await;
 
     let mut ws = Websocket::new(&spawner, stack, ws_channel.sender());
     let mac = esp_hal::efuse::Efuse::mac_address();
@@ -125,6 +114,10 @@ async fn main(spawner: Spawner) -> ! {
             Either::First(WebsocketEvent::Disconnected) => {
                 info!("Buzzer is now disconnected from NBC")
             }
+            Either::First(WebsocketEvent::Command(cmd)) => match cmd.try_into() {
+                Ok(c) => led.set(c).await,
+                Err(e) => error!("Failed to parse websocket commande: {e}"),
+            },
             Either::Second(_) => {
                 ws.send_button_pushed(&mac).await;
             }

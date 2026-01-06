@@ -6,7 +6,7 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use embedded_websocket as ws;
 use esp_hal::rng::Rng;
-use log::{error, info, warn};
+use log::{error, info};
 use serde_json as sj;
 use static_cell::StaticCell;
 
@@ -19,6 +19,7 @@ pub struct Websocket {
 pub enum WebsocketEvent {
     Connected,
     Disconnected,
+    Command(sj::Value),
 }
 
 static CHANNEL: StaticCell<Channel<NoopRawMutex, sj::Value, 3>> = StaticCell::new();
@@ -142,11 +143,18 @@ pub async fn websocket_task(
                             } else {
                                 let mut frame: [u8; BUF_SIZE] = [0; BUF_SIZE];
                                 if let Ok(x) = client.read(&buffer, &mut frame) {
-                                    warn!(
-                                        "Unprocessed message: {:?}",
-                                        str::from_utf8(&frame[..x.len_to])
-                                            .unwrap_or("invalid string")
-                                    );
+                                    let message = str::from_utf8(&frame[..x.len_to]);
+                                    match message {
+                                        Err(e) => error!("invalid message ({e})"),
+                                        Ok(m) => {
+                                            info!("Received new message: {m}");
+                                            if let Ok(v) = sj::from_str(m) {
+                                                rx_channel.send(WebsocketEvent::Command(v)).await;
+                                            } else {
+                                                error!("Failed to parse message as json");
+                                            }
+                                        }
+                                    }
                                 } else {
                                     error!(
                                         "Failed to decode receveid message {:?}",
