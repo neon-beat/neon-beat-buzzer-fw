@@ -1,4 +1,5 @@
 use core::f64::consts::PI;
+
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
@@ -12,8 +13,7 @@ use esp_hal_smartled::{self as sl, SmartLedsAdapterAsync, smart_led_buffer};
 use libm::{cos, fabs, fmod, trunc};
 use log::{error, info};
 use serde_json as sj;
-pub use smart_leds::RGB;
-use smart_leds::{SmartLedsWriteAsync, brightness};
+use smart_leds::{RGB, SmartLedsWriteAsync, brightness};
 use static_cell::StaticCell;
 
 const MAX_BRIGHTNESS_TABLE_LEN: usize = 50;
@@ -74,44 +74,44 @@ fn hsv_to_rgb(h: f64, s: f64, v: f64) -> RGB<u8> {
 
 fn parse_generic_pattern_cmd(
     pattern_type: &str,
-    details: &sj::Value,
+    details: &sj::Map<alloc::string::String, sj::Value>,
 ) -> Result<LedCmd, &'static str> {
-    let color = match details.get("color") {
-        Some(c) if c.is_object() => c,
-        None => return Err("No color object in blink message"),
-        _ => return Err("Invalid json type for blink message"),
-    };
+    let color = details
+        .get("color")
+        .ok_or("No color in pattern message")?
+        .as_object()
+        .ok_or("Invalid json type for color in pattern message")?;
 
-    let hue = match color.get("h") {
-        Some(h) if h.is_f64() => h.as_f64().unwrap(),
-        None => return Err("No hue in blink color"),
-        _ => return Err("Invalid json type for hue in blink message"),
-    };
-    let saturation = match color.get("s") {
-        Some(s) if s.is_f64() => s.as_f64().unwrap(),
-        None => return Err("No saturation in blink color"),
-        _ => return Err("Invalid json type for saturation in blink message"),
-    };
-    let value = match color.get("v") {
-        Some(v) if v.is_f64() => v.as_f64().unwrap(),
-        None => return Err("No value in blink color"),
-        _ => return Err("Invalid json type for value in blink message"),
-    };
-    let dc = match details.get("dc") {
-        Some(d) if d.is_f64() => d.as_f64().unwrap(),
-        None => return Err("No duty cycle in blink message"),
-        _ => return Err("Invalid json type for duty cycle in blink message"),
-    };
-    let period = match details.get("period_ms") {
-        Some(p) if p.is_u64() => p.as_u64().unwrap(),
-        None => return Err("No period in blink message"),
-        _ => return Err("Invalid json type for period in blink message"),
-    };
-    let duration = match details.get("duration_ms") {
-        Some(d) if d.is_u64() => d.as_u64().unwrap(),
-        None => return Err("No duration in blink message"),
-        _ => return Err("Invalid json type for duration in blink message"),
-    };
+    let hue = color
+        .get("h")
+        .ok_or("No hue in pattern color")?
+        .as_f64()
+        .ok_or("Invalid json type for color hue in pattern message")?;
+    let saturation = color
+        .get("s")
+        .ok_or("No saturation in pattern color")?
+        .as_f64()
+        .ok_or("Invalid json type for color saturation in pattern message")?;
+    let value = color
+        .get("v")
+        .ok_or("No value in pattern color")?
+        .as_f64()
+        .ok_or("Invalid json type for color value in pattern message")?;
+    let dc = details
+        .get("dc")
+        .ok_or("No duty cycle in pattern color")?
+        .as_f64()
+        .ok_or("Invalid json type for duty cycle in pattern message")?;
+    let period = details
+        .get("period")
+        .ok_or("No period in pattern color")?
+        .as_u64()
+        .ok_or("Invalid json type for period in pattern message")?;
+    let duration = details
+        .get("duration")
+        .ok_or("No duration in pattern color")?
+        .as_u64()
+        .ok_or("Invalid json type for duration in pattern message")?;
 
     match pattern_type {
         "blink" => Ok(LedCmd::Blink {
@@ -134,21 +134,21 @@ impl TryFrom<sj::Value> for LedCmd {
     type Error = &'static str;
 
     fn try_from(value: sj::Value) -> Result<Self, Self::Error> {
-        let pattern = match value.get("pattern") {
-            Some(p) if p.is_object() => p,
-            None => return Err("No pattern object in led message"),
-            _ => return Err("Invalid json type for pattern"),
-        };
-        let pattern_type = match pattern.get("type") {
-            Some(t) if t.is_string() => t.as_str().unwrap(),
-            None => return Err("No type object in led message"),
-            _ => return Err("Invalid json type for type"),
-        };
-        let details = match pattern.get("details") {
-            Some(d) if d.is_object() => d,
-            None => return Err("No details object in led message"),
-            _ => return Err("Invalid json type for details"),
-        };
+        let pattern = value
+            .get("pattern")
+            .ok_or("No pattern in led message")?
+            .as_object()
+            .ok_or("Invalid json type for pattern in led message")?;
+        let pattern_type = pattern
+            .get("type")
+            .ok_or("No type in pattern message")?
+            .as_str()
+            .ok_or("Invalid json type for type in pattern message")?;
+        let details = pattern
+            .get("details")
+            .ok_or("No details in pattern message")?
+            .as_object()
+            .ok_or("Invalid json type for details in pattern message")?;
         match pattern_type {
             "blink" | "wave" => parse_generic_pattern_cmd(pattern_type, details),
             _ => Err("Unknown pattern"),
@@ -161,12 +161,12 @@ struct PatternProperties {
     color: RGB<u8>,
     duration: Duration,
     brightness_table: [SubPatternProperties; MAX_BRIGHTNESS_TABLE_LEN],
-    brighntess_table_len: usize,
+    brightness_table_len: usize,
 }
 
 fn compute_wave_table(
-    _period: Duration,
-    _duty_cycle: u8,
+    _period: Duration, // TODO: use period to adjust speed
+    _duty_cycle: u8,   // TODO: use duty cycle to adjust shape
 ) -> [SubPatternProperties; MAX_BRIGHTNESS_TABLE_LEN] {
     let mut result: [SubPatternProperties; MAX_BRIGHTNESS_TABLE_LEN] =
         [Default::default(); MAX_BRIGHTNESS_TABLE_LEN];
@@ -205,7 +205,7 @@ impl PatternProperties {
                     color: c,
                     duration: d,
                     brightness_table: table,
-                    brighntess_table_len: 2,
+                    brightness_table_len: 2,
                 })
             }
             LedCmd::Wave {
@@ -222,7 +222,7 @@ impl PatternProperties {
                     color: c,
                     duration: d,
                     brightness_table: table,
-                    brighntess_table_len: MAX_BRIGHTNESS_TABLE_LEN,
+                    brightness_table_len: MAX_BRIGHTNESS_TABLE_LEN,
                 })
             }
             _ => Err("Unsupported pattern"),
@@ -245,7 +245,7 @@ impl Led {
                 sl::SmartLedsAdapterAsync::new(rmt.channel0, gpio, buffer),
                 channel.receiver(),
             ))
-            .ok();
+            .ok(); // TODO: handle error
         Led {
             cmd_channel: channel.sender(),
         }
@@ -267,52 +267,35 @@ async fn execute_off(
     cmd_channel.receive().await;
 }
 
-async fn execute_blink(
-    controller: &mut SmartLedsAdapterAsync<'static, 25>,
-    cmd_channel: &Receiver<'static, NoopRawMutex, LedCmd, 1>,
-    pattern: PatternProperties,
-) -> LedCmd {
-    let mut value = pattern.brightness_table[..pattern.brighntess_table_len]
-        .iter()
-        .cycle();
-    let start = Instant::now();
+enum TimingMechanism {
+    VariableTiming,      // For blink - uses Timer::after with different durations
+    FixedTiming(Ticker), // For wave - uses fixed ticker
+}
 
-    loop {
-        let subpattern = value.next().unwrap();
-        controller
-            .write(brightness(
-                [pattern.color].into_iter(),
-                subpattern.brightness,
-            ))
-            .await
-            .expect("Failed to set led");
-        match select(cmd_channel.receive(), Timer::after(subpattern.duration)).await {
-            Either::First(x) => return x,
-            _ => {
-                if pattern.duration.as_millis() > 0
-                    && Instant::now().duration_since(start) > pattern.duration
-                {
-                    info!("Pattern expired");
-                    return LedCmd::Off;
-                }
-            }
+impl TimingMechanism {
+    async fn wait(&mut self, duration: Duration) {
+        match self {
+            TimingMechanism::VariableTiming => Timer::after(duration).await,
+            TimingMechanism::FixedTiming(ticker) => ticker.next().await,
         }
     }
 }
 
-async fn execute_wave(
+async fn execute_pattern(
     controller: &mut SmartLedsAdapterAsync<'static, 25>,
     cmd_channel: &Receiver<'static, NoopRawMutex, LedCmd, 1>,
     pattern: PatternProperties,
+    mut timer: TimingMechanism,
 ) -> LedCmd {
-    let mut value = pattern.brightness_table[..pattern.brighntess_table_len]
+    let mut value = pattern.brightness_table[..pattern.brightness_table_len]
         .iter()
         .cycle();
     let start = Instant::now();
-    let mut ticker = Ticker::every(pattern.brightness_table[0].duration);
 
     loop {
-        let subpattern = value.next().unwrap();
+        let subpattern = value
+            .next()
+            .expect("brightness_table_len > 0 guarantees cycle never ends");
         controller
             .write(brightness(
                 [pattern.color].into_iter(),
@@ -320,7 +303,7 @@ async fn execute_wave(
             ))
             .await
             .expect("Failed to set led");
-        match select(cmd_channel.receive(), ticker.next()).await {
+        match select(cmd_channel.receive(), timer.wait(subpattern.duration)).await {
             Either::First(x) => return x,
             _ => {
                 if pattern.duration.as_millis() > 0
@@ -346,24 +329,33 @@ async fn led_task(
     let mut cmd = cmd_channel.receive().await;
     loop {
         match cmd {
-            LedCmd::Blink { .. } => {
-                let pattern = PatternProperties::new(&cmd);
-                if let Err(e) = pattern {
-                    error!("Received invalid blink command: {e}");
-                } else {
+            LedCmd::Blink { .. } => match PatternProperties::new(&cmd) {
+                Ok(pattern) => {
                     info!("Starting blink pattern");
-                    cmd = execute_blink(&mut controller, &cmd_channel, pattern.unwrap()).await;
+                    cmd = execute_pattern(
+                        &mut controller,
+                        &cmd_channel,
+                        pattern,
+                        TimingMechanism::VariableTiming,
+                    )
+                    .await;
                 }
-            }
-            LedCmd::Wave { .. } => {
-                let pattern = PatternProperties::new(&cmd);
-                if let Err(e) = pattern {
-                    error!("Received invalid wave command: {e}");
-                } else {
+                Err(e) => error!("Received invalid blink command: {e}"),
+            },
+            LedCmd::Wave { .. } => match PatternProperties::new(&cmd) {
+                Ok(pattern) => {
                     info!("Starting wave pattern");
-                    cmd = execute_wave(&mut controller, &cmd_channel, pattern.unwrap()).await;
+                    let ticker_duration = pattern.brightness_table[0].duration;
+                    cmd = execute_pattern(
+                        &mut controller,
+                        &cmd_channel,
+                        pattern,
+                        TimingMechanism::FixedTiming(Ticker::every(ticker_duration)),
+                    )
+                    .await;
                 }
-            }
+                Err(e) => error!("Received invalid wave command: {e}"),
+            },
             LedCmd::Off => {
                 info!("Shutting led off");
                 execute_off(&mut controller, &cmd_channel).await
