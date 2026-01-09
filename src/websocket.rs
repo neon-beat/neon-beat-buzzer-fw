@@ -59,18 +59,33 @@ impl Websocket {
     }
 }
 
+// Use static allocation instead of stack allocation for buffers to save stack space:
+// - Reduces peak stack usage during message processing (saves ~1KB per message)
+// - Improves determinism by eliminating per-message allocations
+// - Prevents stack overflow risk on resource-constrained embedded systems
+// Trade-off: Fixed memory cost at startup, but much safer and more efficient at runtime
+static RX_BUFFER: StaticCell<[u8; BUF_SIZE]> = StaticCell::new();
+static TX_BUFFER: StaticCell<[u8; BUF_SIZE]> = StaticCell::new();
+static CONNECT_BUFFER: StaticCell<[u8; BUF_SIZE]> = StaticCell::new();
+static FRAME_BUFFER: StaticCell<[u8; BUF_SIZE]> = StaticCell::new();
+
 #[embassy_executor::task]
 pub async fn websocket_task(
     stack: Stack<'static>,
     rx_channel: Sender<'static, NoopRawMutex, WebsocketEvent, 3>,
     tx_channel: Receiver<'static, NoopRawMutex, sj::Value, 3>,
 ) {
-    let mut rx_buffer: [u8; BUF_SIZE] = [0; BUF_SIZE];
-    let mut tx_buffer: [u8; BUF_SIZE] = [0; BUF_SIZE];
-    let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
+    // Initialize static buffers once at task startup
+    // These are reused throughout the connection lifetime, eliminating repeated allocations
+    let rx_buffer = RX_BUFFER.init([0u8; BUF_SIZE]);
+    let tx_buffer = TX_BUFFER.init([0u8; BUF_SIZE]);
+    let connect_buffer = CONNECT_BUFFER.init([0u8; BUF_SIZE]);
+    let frame_buffer = FRAME_BUFFER.init([0u8; BUF_SIZE]);
+
+    let mut socket = TcpSocket::new(stack, rx_buffer, tx_buffer);
     let mut client = ws::WebSocketClient::new_client(Rng::new());
     let mut connected: bool = false;
-    let mut ws_key: ws::WebSocketKey;
+    let mut ws_key: ws::WebSocketKey; // TODO: Really required at function scope ?
 
     info!("Starting websocket task");
     loop {
@@ -82,7 +97,6 @@ pub async fn websocket_task(
         }
         info!("Connected to TCP server");
         while socket.state() == embassy_net::tcp::State::Established {
-            let mut buffer: [u8; BUF_SIZE] = [0; BUF_SIZE];
             let websocket_options = ws::WebSocketOptions {
                 path: "/ws",
                 host: "192.168.66.1",
@@ -90,14 +104,14 @@ pub async fn websocket_task(
                 sub_protocols: None,
                 additional_headers: None,
             };
-            let res = client.client_connect(&websocket_options, &mut buffer);
+            let res = client.client_connect(&websocket_options, connect_buffer);
             match res {
                 Err(e) => {
                     error!("Failed to generate connect message: {:?}", e);
                     continue;
                 }
                 Ok((count, key)) => {
-                    let res = socket.write(&buffer[..count]).await;
+                    let res = socket.write(&connect_buffer[..count]).await;
                     match res {
                         Err(e) => {
                             error!("Failed to connect to websocket server: {:?}", e);
@@ -108,14 +122,14 @@ pub async fn websocket_task(
                 }
             }
             loop {
-                match select(socket.read(&mut buffer), tx_channel.receive()).await {
+                match select(socket.read(connect_buffer), tx_channel.receive()).await {
                     Either::First(x) => match x {
                         Ok(0) => {
                             info!("Socket is closed");
                             let res = client.close(
                                 ws::WebSocketCloseStatusCode::NormalClosure,
                                 None,
-                                &mut buffer,
+                                connect_buffer,
                             );
                             if let Err(e) = res {
                                 error!("Failed to close client after TCP disconnect: {:?}", e);
@@ -131,7 +145,7 @@ pub async fn websocket_task(
                         }
                         Ok(count) => {
                             if !connected {
-                                let res = client.client_accept(&ws_key, &buffer[..count]);
+                                let res = client.client_accept(&ws_key, &connect_buffer[..count]);
                                 match res {
                                     Ok(_) => {
                                         connected = true;
@@ -140,40 +154,38 @@ pub async fn websocket_task(
                                     }
                                     Err(e) => error!("Can not accept connection: {:?}", e),
                                 }
-                            } else {
-                                let mut frame: [u8; BUF_SIZE] = [0; BUF_SIZE];
-                                if let Ok(x) = client.read(&buffer, &mut frame) {
-                                    let message = str::from_utf8(&frame[..x.len_to]);
-                                    match message {
-                                        Err(e) => error!("invalid message ({e})"),
-                                        Ok(m) => {
-                                            info!("Received new message: {m}");
-                                            if let Ok(v) = sj::from_str(m) {
-                                                rx_channel.send(WebsocketEvent::Command(v)).await;
-                                            } else {
-                                                error!("Failed to parse message as json");
-                                            }
+                            } else if let Ok(x) = client.read(connect_buffer, frame_buffer) {
+                                let message = str::from_utf8(&frame_buffer[..x.len_to]);
+                                match message {
+                                    Err(e) => error!("invalid message ({e})"),
+                                    Ok(m) => {
+                                        info!("Received new message: {m}");
+                                        if let Ok(v) = sj::from_str(m) {
+                                            rx_channel.send(WebsocketEvent::Command(v)).await;
+                                        } else {
+                                            error!("Failed to parse message as json");
                                         }
                                     }
-                                } else {
-                                    error!(
-                                        "Failed to decode receveid message {:?}",
-                                        &buffer[..count]
-                                    );
                                 }
+                            } else {
+                                error!(
+                                    "Failed to decode receveid message {:?}",
+                                    &connect_buffer[..count]
+                                );
                             }
                         }
                     },
                     Either::Second(x) => {
-                        info!("Sending message {:?}", x.to_string());
+                        let message_str = x.to_string();
+                        info!("Sending message {message_str:?}");
                         let res = client.write(
                             ws::WebSocketSendMessageType::Text,
                             true,
-                            x.to_string().as_bytes(),
-                            &mut buffer,
+                            message_str.as_bytes(),
+                            connect_buffer,
                         );
                         match res {
-                            Ok(count) => match socket.write(&buffer[..count]).await {
+                            Ok(count) => match socket.write(&connect_buffer[..count]).await {
                                 Err(e) => error!("Failed to send message: {:?}", e),
                                 _ => info!("Message sent"),
                             },
