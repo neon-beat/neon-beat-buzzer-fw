@@ -11,21 +11,22 @@ mod led;
 mod network;
 mod websocket;
 
-use crate::button::button_task;
-use crate::led::Led;
-use crate::network::{connection, net_task};
-use crate::websocket::{Websocket, WebsocketEvent};
-
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_net::StackResources;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Channel};
 use embassy_time::{Duration, Timer};
-use esp_hal::clock::CpuClock;
-use esp_hal::{rmt::Rmt, rng::Rng, time::Rate, timer::timg::TimerGroup};
+use esp_hal::{clock::CpuClock, rmt::Rmt, rng::Rng, time::Rate, timer::timg::TimerGroup};
 use esp_radio::Controller;
 use log::{error, info};
 use static_cell::StaticCell;
+
+use crate::{
+    button::button_task,
+    led::Led,
+    network::{connection, net_task},
+    websocket::{Websocket, WebsocketEvent},
+};
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
@@ -69,17 +70,22 @@ async fn main(spawner: Spawner) -> ! {
     let rng = Rng::new();
     let seed = (rng.random() as u64) << 32 | rng.random() as u64;
     let (stack, runner) = embassy_net::new(wifi_interfaces.sta, config, resources, seed);
-    let rmt = Rmt::new(peripherals.RMT, Rate::from_mhz(80)).unwrap();
+    let rmt =
+        Rmt::new(peripherals.RMT, Rate::from_mhz(80)).expect("Failed to initialize RMT controller");
     let mut led = Led::new(&spawner, rmt.into_async(), peripherals.GPIO3);
-    spawner.spawn(connection(wifi_controller)).ok();
-    spawner.spawn(net_task(runner)).ok();
+    spawner
+        .spawn(connection(wifi_controller))
+        .expect("Failed to spawn connection task");
+    spawner
+        .spawn(net_task(runner))
+        .expect("Failed to spawn net_task");
 
     spawner
         .spawn(button_task(
             peripherals.GPIO2.into(),
             button_channel.sender(),
         ))
-        .ok();
+        .expect("Failed to spawn button_task");
 
     loop {
         if stack.is_link_up() {
@@ -92,7 +98,10 @@ async fn main(spawner: Spawner) -> ! {
     while stack.config_v4().is_none() {
         Timer::after_secs(1).await;
     }
-    let address = stack.config_v4().unwrap().address;
+    let address = stack
+        .config_v4()
+        .expect("IP address should be available after wait loop")
+        .address;
     info!("Got IP: {address}");
 
     let mut ws = Websocket::new(&spawner, stack, ws_channel.sender());
