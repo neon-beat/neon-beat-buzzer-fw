@@ -1,9 +1,3 @@
-use core::convert::Into;
-use core::default::Default;
-use core::env;
-use core::marker::Sized;
-use core::matches;
-use core::result::Result::{Err, Ok};
 use embassy_net::Runner;
 use embassy_time::{Duration, Timer};
 use esp_radio::wifi::{
@@ -36,9 +30,9 @@ pub async fn connection(mut controller: WifiController<'static>) {
                     .with_ssid(SSID.into())
                     .with_password(PASSWORD.into()),
             );
-            controller.set_config(&client_config).unwrap();
+            controller.set_config(&client_config).unwrap(); // TODO: handle error in a more idiomatic way
             info!("Starting wifi");
-            controller.start_async().await.unwrap();
+            controller.start_async().await.unwrap(); // TODO: handle error in a more idiomatic way
             info!("Wifi started!");
 
             info!("Scan");
@@ -46,7 +40,7 @@ pub async fn connection(mut controller: WifiController<'static>) {
             let result = controller
                 .scan_with_config_async(scan_config)
                 .await
-                .unwrap();
+                .unwrap(); // TODO: handle error in a more idiomatic way
             for ap in result {
                 info!("{:?}", ap);
             }
