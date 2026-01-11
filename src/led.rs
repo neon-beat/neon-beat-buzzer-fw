@@ -259,12 +259,12 @@ impl Led {
 async fn execute_off(
     controller: &mut SmartLedsAdapterAsync<'static, 25>,
     cmd_channel: &Receiver<'static, NoopRawMutex, LedCmd, 1>,
-) {
+) -> LedCmd {
     controller
         .write(brightness([RGB::new(0, 0, 0)].into_iter(), 0))
         .await
         .expect("Failed to set led off");
-    cmd_channel.receive().await;
+    cmd_channel.receive().await
 }
 
 enum TimingMechanism {
@@ -358,7 +358,7 @@ async fn led_task(
             },
             LedCmd::Off => {
                 info!("Shutting led off");
-                execute_off(&mut controller, &cmd_channel).await
+                cmd = execute_off(&mut controller, &cmd_channel).await
             }
         }
     }
