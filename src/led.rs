@@ -245,7 +245,7 @@ impl Led {
                 sl::SmartLedsAdapterAsync::new(rmt.channel0, gpio, buffer),
                 channel.receiver(),
             ))
-            .ok(); // TODO: handle error
+            .expect("Failed to start led task");
         Led {
             cmd_channel: channel.sender(),
         }
