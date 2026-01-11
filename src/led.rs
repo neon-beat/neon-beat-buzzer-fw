@@ -103,12 +103,12 @@ fn parse_generic_pattern_cmd(
         .as_f64()
         .ok_or("Invalid json type for duty cycle in pattern message")?;
     let period = details
-        .get("period")
+        .get("period_ms")
         .ok_or("No period in pattern color")?
         .as_u64()
         .ok_or("Invalid json type for period in pattern message")?;
     let duration = details
-        .get("duration")
+        .get("duration_ms")
         .ok_or("No duration in pattern color")?
         .as_u64()
         .ok_or("Invalid json type for duration in pattern message")?;
