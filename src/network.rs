@@ -30,9 +30,14 @@ pub async fn connection(mut controller: WifiController<'static>) {
                     .with_ssid(SSID.into())
                     .with_password(PASSWORD.into()),
             );
-            controller.set_config(&client_config).unwrap(); // TODO: handle error in a more idiomatic way
+            controller
+                .set_config(&client_config)
+                .expect("Failed to configure radio stack");
             info!("Starting wifi");
-            controller.start_async().await.unwrap(); // TODO: handle error in a more idiomatic way
+            controller
+                .start_async()
+                .await
+                .expect("Failed to start radio stack");
             info!("Wifi started!");
 
             info!("Scan");
@@ -40,7 +45,7 @@ pub async fn connection(mut controller: WifiController<'static>) {
             let result = controller
                 .scan_with_config_async(scan_config)
                 .await
-                .unwrap(); // TODO: handle error in a more idiomatic way
+                .expect("Failed to trigger wifi scan");
             for ap in result {
                 info!("{:?}", ap);
             }
