@@ -85,7 +85,6 @@ pub async fn websocket_task(
     let mut socket = TcpSocket::new(stack, rx_buffer, tx_buffer);
     let mut client = ws::WebSocketClient::new_client(Rng::new());
     let mut connected: bool = false;
-    let mut ws_key: ws::WebSocketKey; // TODO: Really required at function scope ?
 
     info!("Starting websocket task");
     loop {
@@ -105,6 +104,7 @@ pub async fn websocket_task(
                 additional_headers: None,
             };
             let res = client.client_connect(&websocket_options, connect_buffer);
+            let ws_key: ws::WebSocketKey;
             match res {
                 Err(e) => {
                     error!("Failed to generate connect message: {:?}", e);
