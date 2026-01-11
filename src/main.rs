@@ -118,7 +118,7 @@ async fn main(spawner: Spawner) -> ! {
             }
             Either::First(WebsocketEvent::Command(cmd)) => match cmd.try_into() {
                 Ok(c) => led.set(c).await,
-                Err(e) => error!("Failed to parse websocket commande: {e}"),
+                Err(e) => error!("Failed to parse websocket command: {e}"),
             },
             Either::Second(_) => {
                 ws.send_button_pushed(&mac).await;
