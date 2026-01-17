@@ -94,11 +94,6 @@ fn format_status_message(
     sj::to_slice(&ident, buf)
 }
 
-// Use static allocation instead of stack allocation for buffers to save stack space:
-// - Reduces peak stack usage during message processing (saves ~1KB per message)
-// - Improves determinism by eliminating per-message allocations
-// - Prevents stack overflow risk on resource-constrained embedded systems
-// Trade-off: Fixed memory cost at startup, but much safer and more efficient at runtime
 static RX_BUFFER: StaticCell<[u8; BUF_SIZE]> = StaticCell::new();
 static TX_BUFFER: StaticCell<[u8; BUF_SIZE]> = StaticCell::new();
 static CONNECT_BUFFER: StaticCell<[u8; BUF_SIZE]> = StaticCell::new();
@@ -111,8 +106,6 @@ pub async fn websocket_task(
     tx_channel: Receiver<'static, NoopRawMutex, StatusMessage, 3>,
     mac: [u8; 6],
 ) {
-    // Initialize static buffers once at task startup
-    // These are reused throughout the connection lifetime, eliminating repeated allocations
     let rx_buffer = RX_BUFFER.init([0u8; BUF_SIZE]);
     let tx_buffer = TX_BUFFER.init([0u8; BUF_SIZE]);
     let connect_buffer = CONNECT_BUFFER.init([0u8; BUF_SIZE]);
