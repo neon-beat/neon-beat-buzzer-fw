@@ -7,7 +7,8 @@
 )]
 
 mod button;
-mod led;
+mod led_cmd;
+mod led_driver;
 mod network;
 mod websocket;
 
@@ -18,12 +19,12 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Channel};
 use embassy_time::{Duration, Timer};
 use esp_hal::{clock::CpuClock, rmt::Rmt, rng::Rng, time::Rate, timer::timg::TimerGroup};
 use esp_radio::Controller;
-use log::{error, info};
+use log::info;
 use static_cell::StaticCell;
 
 use crate::{
     button::button_task,
-    led::Led,
+    led_driver::Led,
     network::{connection, net_task},
     websocket::{Websocket, WebsocketEvent},
 };
@@ -104,24 +105,23 @@ async fn main(spawner: Spawner) -> ! {
         .address;
     info!("Got IP: {address}");
 
-    let mut ws = Websocket::new(&spawner, stack, ws_channel.sender());
     let mac = esp_hal::efuse::Efuse::mac_address();
+    let mut ws = Websocket::new(&spawner, stack, ws_channel.sender(), mac);
 
     loop {
         match select(ws_channel.receive(), button_channel.receive()).await {
             Either::First(WebsocketEvent::Connected) => {
                 info!("Buzzer is now connected to NBC");
-                ws.send_identify(&mac).await;
+                ws.send_identify().await;
             }
             Either::First(WebsocketEvent::Disconnected) => {
                 info!("Buzzer is now disconnected from NBC")
             }
-            Either::First(WebsocketEvent::Command(cmd)) => match cmd.try_into() {
-                Ok(c) => led.set(c).await,
-                Err(e) => error!("Failed to parse websocket command: {e}"),
-            },
+            Either::First(WebsocketEvent::Command(cmd)) => {
+                led.set(cmd).await;
+            }
             Either::Second(_) => {
-                ws.send_button_pushed(&mac).await;
+                ws.send_button_pushed().await;
             }
         }
     }

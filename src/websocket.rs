@@ -1,62 +1,97 @@
-use alloc::{format, string::ToString};
+use crate::led_cmd::{LedCmd, MessageLedPattern};
+use alloc::format;
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_net::{Ipv4Address, Stack, tcp::TcpSocket};
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::channel::{Channel, Receiver, Sender};
+use embassy_sync::{
+    blocking_mutex::raw::NoopRawMutex,
+    channel::{Channel, Receiver, Sender},
+};
 use embedded_websocket as ws;
 use esp_hal::rng::Rng;
-use log::{error, info};
-use serde_json as sj;
+use log::{debug, error, info, warn};
+use serde::Serialize;
+use serde_json_core as sj;
 use static_cell::StaticCell;
 
 const BUF_SIZE: usize = 512;
 
+pub enum StatusMessage {
+    Identification,
+    Buzz,
+}
+
+impl From<StatusMessage> for &str {
+    fn from(value: StatusMessage) -> Self {
+        match value {
+            StatusMessage::Identification => "identification",
+            StatusMessage::Buzz => "buzz",
+        }
+    }
+}
+
 pub struct Websocket {
-    tx_channel: Sender<'static, NoopRawMutex, sj::Value, 3>,
+    tx_channel: Sender<'static, NoopRawMutex, StatusMessage, 3>,
+}
+
+#[derive(Serialize)]
+struct StatusMessageData<'a, 'b> {
+    r#type: &'a str,
+    id: &'b str,
 }
 
 pub enum WebsocketEvent {
     Connected,
     Disconnected,
-    Command(sj::Value),
+    Command(LedCmd),
 }
 
-static CHANNEL: StaticCell<Channel<NoopRawMutex, sj::Value, 3>> = StaticCell::new();
+static CHANNEL: StaticCell<Channel<NoopRawMutex, StatusMessage, 3>> = StaticCell::new();
 
 impl Websocket {
     pub fn new(
         spawner: &Spawner,
         stack: Stack<'static>,
         rx_channel: Sender<'static, NoopRawMutex, WebsocketEvent, 3>,
+        mac: [u8; 6],
     ) -> Self {
         let tx_channel: &'static mut _ = CHANNEL.init(Channel::new());
         let res = Websocket {
             tx_channel: tx_channel.sender(),
         };
-        let result = spawner.spawn(websocket_task(stack, rx_channel, tx_channel.receiver()));
+        let result = spawner.spawn(websocket_task(
+            stack,
+            rx_channel,
+            tx_channel.receiver(),
+            mac,
+        ));
         if let Err(e) = result {
             error!("Failed to spawn websocket task: {:?}", e);
         }
         res
     }
 
-    pub async fn send_identify(&mut self, mac: &[u8; 6]) {
-        let data = sj::json!({
-            "type": "identification",
-            "id": format!("{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5])
-        });
-        self.tx_channel.send(data).await;
+    pub async fn send_identify(&mut self) {
+        self.tx_channel.send(StatusMessage::Identification).await;
     }
-    pub async fn send_button_pushed(&mut self, mac: &[u8; 6]) {
-        let data = sj::json!({
-            "type": "buzz",
-            "id": format!("{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5])
-        });
-        self.tx_channel.send(data).await;
+    pub async fn send_button_pushed(&mut self) {
+        self.tx_channel.send(StatusMessage::Buzz).await;
     }
+}
+
+fn format_status_message(
+    buf: &mut [u8],
+    status: StatusMessage,
+    mac: &[u8; 6],
+) -> sj::ser::Result<usize> {
+    let ident = StatusMessageData {
+        r#type: status.into(),
+        id: &format!(
+            "{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+        ),
+    };
+    sj::to_slice(&ident, buf)
 }
 
 // Use static allocation instead of stack allocation for buffers to save stack space:
@@ -73,7 +108,8 @@ static FRAME_BUFFER: StaticCell<[u8; BUF_SIZE]> = StaticCell::new();
 pub async fn websocket_task(
     stack: Stack<'static>,
     rx_channel: Sender<'static, NoopRawMutex, WebsocketEvent, 3>,
-    tx_channel: Receiver<'static, NoopRawMutex, sj::Value, 3>,
+    tx_channel: Receiver<'static, NoopRawMutex, StatusMessage, 3>,
+    mac: [u8; 6],
 ) {
     // Initialize static buffers once at task startup
     // These are reused throughout the connection lifetime, eliminating repeated allocations
@@ -144,6 +180,11 @@ pub async fn websocket_task(
                             continue;
                         }
                         Ok(count) => {
+                            debug!(
+                                "New TCP data: {:?} ({} bytes)",
+                                &connect_buffer[..count],
+                                count
+                            );
                             if !connected {
                                 let res = client.client_accept(&ws_key, &connect_buffer[..count]);
                                 match res {
@@ -155,41 +196,58 @@ pub async fn websocket_task(
                                     Err(e) => error!("Can not accept connection: {:?}", e),
                                 }
                             } else if let Ok(x) = client.read(connect_buffer, frame_buffer) {
-                                let message = str::from_utf8(&frame_buffer[..x.len_to]);
-                                match message {
-                                    Err(e) => error!("invalid message ({e})"),
-                                    Ok(m) => {
-                                        info!("Received new message: {m}");
-                                        if let Ok(v) = sj::from_str(m) {
-                                            rx_channel.send(WebsocketEvent::Command(v)).await;
-                                        } else {
-                                            error!("Failed to parse message as json");
+                                debug!("WS message parsing status: {:?}", x);
+                                if x.message_type == ws::WebSocketReceiveMessageType::CloseMustReply
+                                {
+                                    panic!("Server wants to close the connection !");
+                                }
+                                debug!(
+                                    "Received message {:?} ({} bytes)",
+                                    &frame_buffer[..x.len_to],
+                                    x.len_to
+                                );
+                                let ser = serde_json_core::from_slice::<MessageLedPattern>(
+                                    &frame_buffer[..x.len_to],
+                                );
+                                match ser {
+                                    Ok((data, _)) => match data.try_into() {
+                                        Ok(cmd) => {
+                                            rx_channel.send(WebsocketEvent::Command(cmd)).await
                                         }
+                                        Err(e) => warn!("Failed to decode received command: {e}"),
+                                    },
+                                    Err(e) => {
+                                        warn!("Failed to decode received json message: {e}")
                                     }
                                 }
                             } else {
                                 error!(
-                                    "Failed to decode receveid message {:?}",
+                                    "Failed to decode received message {:?}",
                                     &connect_buffer[..count]
                                 );
                             }
                         }
                     },
                     Either::Second(x) => {
-                        let message_str = x.to_string();
-                        info!("Sending message {message_str:?}");
-                        let res = client.write(
-                            ws::WebSocketSendMessageType::Text,
-                            true,
-                            message_str.as_bytes(),
-                            connect_buffer,
-                        );
-                        match res {
-                            Ok(count) => match socket.write(&connect_buffer[..count]).await {
-                                Err(e) => error!("Failed to send message: {:?}", e),
-                                _ => info!("Message sent"),
-                            },
-                            Err(e) => error!("Failed to send message: {:?}", e),
+                        let mut buf = [0; 128];
+                        match format_status_message(&mut buf, x, &mac) {
+                            Ok(x) => {
+                                let res = client.write(
+                                    ws::WebSocketSendMessageType::Text,
+                                    true,
+                                    &buf[..x],
+                                    connect_buffer,
+                                );
+                                match res {
+                                    Ok(count) => match socket.write(&connect_buffer[..count]).await
+                                    {
+                                        Err(e) => error!("Failed to send message: {:?}", e),
+                                        _ => debug!("Message sent"),
+                                    },
+                                    Err(e) => error!("Failed to send message: {:?}", e),
+                                }
+                            }
+                            Err(e) => error!("Failed to serialize message: {e}"),
                         }
                     }
                 }

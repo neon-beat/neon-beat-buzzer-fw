@@ -1,40 +1,25 @@
 use core::f64::consts::PI;
 
+use crate::led_cmd::LedCmd;
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::channel::{Channel, Receiver, Sender};
+use embassy_sync::{
+    blocking_mutex::raw::NoopRawMutex,
+    channel::{Channel, Receiver, Sender},
+};
 use embassy_time::{Duration, Instant, Ticker, Timer};
 use esp_hal::{
     gpio::interconnect::PeripheralOutput,
     rmt::{PulseCode, Rmt},
 };
 use esp_hal_smartled::{self as sl, SmartLedsAdapterAsync, smart_led_buffer};
-use libm::{cos, fabs, fmod, trunc};
+use libm::{cos, trunc};
 use log::{error, info};
-use serde_json as sj;
 use smart_leds::{RGB, SmartLedsWriteAsync, brightness};
 use static_cell::StaticCell;
 
 const MAX_BRIGHTNESS_TABLE_LEN: usize = 50;
 const MAX_BRIGHTNESS: u32 = 255;
-
-#[derive(Debug)]
-pub enum LedCmd {
-    Off,
-    Blink {
-        color: RGB<u8>,
-        duration: Duration,
-        period: Duration,
-        duty_cycle: u8,
-    },
-    Wave {
-        color: RGB<u8>,
-        duration: Duration,
-        period: Duration,
-        duty_cycle: u8,
-    },
-}
 
 pub struct Led {
     cmd_channel: Sender<'static, NoopRawMutex, LedCmd, 1>,
@@ -44,116 +29,6 @@ pub struct Led {
 struct SubPatternProperties {
     brightness: u8,
     duration: Duration,
-}
-
-fn hsv_to_rgb(h: f64, s: f64, v: f64) -> RGB<u8> {
-    let h = match h {
-        h if h < 0.0 => 360.0 + h,
-        _ => fmod(h, 360.0),
-    };
-    let c = v * s;
-    let x = c * (1.0 - fabs(fmod(h / 60.0, 2.0) - 1.0));
-    let m = v - c;
-
-    let (r_tmp, g_tmp, b_tmp) = match h {
-        0.0..60.0 => (c, x, 0.0),
-        60.0..120.0 => (x, c, 0.0),
-        120.0..180.0 => (0.0, c, x),
-        180.0..240.0 => (0.0, x, c),
-        240.0..300.0 => (x, 0.0, c),
-        300.0..360.0 => (c, 0.0, x),
-        _ => panic!("Invalid h value !"),
-    };
-
-    RGB::new(
-        ((r_tmp + m) * 255.0) as u8,
-        ((g_tmp + m) * 255.0) as u8,
-        ((b_tmp + m) * 255.0) as u8,
-    )
-}
-
-fn parse_generic_pattern_cmd(
-    pattern_type: &str,
-    details: &sj::Map<alloc::string::String, sj::Value>,
-) -> Result<LedCmd, &'static str> {
-    let color = details
-        .get("color")
-        .ok_or("No color in pattern message")?
-        .as_object()
-        .ok_or("Invalid json type for color in pattern message")?;
-
-    let hue = color
-        .get("h")
-        .ok_or("No hue in pattern color")?
-        .as_f64()
-        .ok_or("Invalid json type for color hue in pattern message")?;
-    let saturation = color
-        .get("s")
-        .ok_or("No saturation in pattern color")?
-        .as_f64()
-        .ok_or("Invalid json type for color saturation in pattern message")?;
-    let value = color
-        .get("v")
-        .ok_or("No value in pattern color")?
-        .as_f64()
-        .ok_or("Invalid json type for color value in pattern message")?;
-    let dc = details
-        .get("dc")
-        .ok_or("No duty cycle in pattern color")?
-        .as_f64()
-        .ok_or("Invalid json type for duty cycle in pattern message")?;
-    let period = details
-        .get("period_ms")
-        .ok_or("No period in pattern color")?
-        .as_u64()
-        .ok_or("Invalid json type for period in pattern message")?;
-    let duration = details
-        .get("duration_ms")
-        .ok_or("No duration in pattern color")?
-        .as_u64()
-        .ok_or("Invalid json type for duration in pattern message")?;
-
-    match pattern_type {
-        "blink" => Ok(LedCmd::Blink {
-            color: hsv_to_rgb(hue, saturation, value),
-            duration: Duration::from_millis(duration),
-            period: Duration::from_millis(period),
-            duty_cycle: (dc * 100.0) as u8,
-        }),
-        "wave" => Ok(LedCmd::Wave {
-            color: hsv_to_rgb(hue, saturation, value),
-            duration: Duration::from_millis(duration),
-            period: Duration::from_millis(period),
-            duty_cycle: (dc * 100.0) as u8,
-        }),
-        _ => panic!("Invalid internal pattern type"),
-    }
-}
-
-impl TryFrom<sj::Value> for LedCmd {
-    type Error = &'static str;
-
-    fn try_from(value: sj::Value) -> Result<Self, Self::Error> {
-        let pattern = value
-            .get("pattern")
-            .ok_or("No pattern in led message")?
-            .as_object()
-            .ok_or("Invalid json type for pattern in led message")?;
-        let pattern_type = pattern
-            .get("type")
-            .ok_or("No type in pattern message")?
-            .as_str()
-            .ok_or("Invalid json type for type in pattern message")?;
-        let details = pattern
-            .get("details")
-            .ok_or("No details in pattern message")?
-            .as_object()
-            .ok_or("Invalid json type for details in pattern message")?;
-        match pattern_type {
-            "blink" | "wave" => parse_generic_pattern_cmd(pattern_type, details),
-            _ => Err("Unknown pattern"),
-        }
-    }
 }
 
 #[derive(Debug)]
