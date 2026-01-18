@@ -190,10 +190,6 @@ pub async fn websocket_task(
                                 }
                             } else if let Ok(x) = client.read(connect_buffer, frame_buffer) {
                                 debug!("WS message parsing status: {:?}", x);
-                                if x.message_type == ws::WebSocketReceiveMessageType::CloseMustReply
-                                {
-                                    panic!("Server wants to close the connection !");
-                                }
                                 debug!(
                                     "Received message {:?} ({} bytes)",
                                     &frame_buffer[..x.len_to],
