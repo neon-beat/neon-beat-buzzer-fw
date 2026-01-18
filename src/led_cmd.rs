@@ -21,7 +21,7 @@ struct MessageLedDetails {
 #[derive(Deserialize, Debug)]
 struct MessageLedType<'a> {
     r#type: &'a str,
-    details: MessageLedDetails,
+    details: Option<MessageLedDetails>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -76,7 +76,10 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> RGB<u8> {
 impl TryFrom<MessageLedPattern<'_>> for LedCmd {
     type Error = &'static str;
     fn try_from(value: MessageLedPattern<'_>) -> Result<Self, Self::Error> {
-        let details = value.pattern.details;
+        if value.pattern.r#type == "off" {
+            return Ok(LedCmd::Off);
+        }
+        let details = value.pattern.details.ok_or("missing pattern details")?;
         if details.dc > 1.0 || details.dc < 0.0 {
             return Err("Invalid duty cycle");
         }
