@@ -54,3 +54,16 @@ command:
 $ esp-generate --headless -c esp32c3 -o unstable-hal -o alloc -o wifi -o embassy -o log neon-beat-buzzer
 ```
 
+The project is using the log crate coupled with esp_println. The firmware
+only outputs by default logs down to info level. The log levels can be
+tuned when re-flashing the buzzer:
+- to get the main application debug logs:
+```sh
+ESP_LOG=neon_beat_buzzer cargo run
+```
+- to get ALL the debug logs (very verbose, as it includes all the debug
+  logs from any component):
+```sh
+ESP_LOG=debug cargo run
+```
+
