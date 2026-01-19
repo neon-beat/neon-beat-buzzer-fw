@@ -175,7 +175,8 @@ pub async fn websocket_task(
                         Ok(count) => {
                             debug!(
                                 "New TCP data: {:?} ({} bytes)",
-                                &connect_buffer[..count],
+                                str::from_utf8(&connect_buffer[..count])
+                                    .unwrap_or("invalid_string"),
                                 count
                             );
                             if !connected {
@@ -191,8 +192,9 @@ pub async fn websocket_task(
                             } else if let Ok(x) = client.read(connect_buffer, frame_buffer) {
                                 debug!("WS message parsing status: {:?}", x);
                                 debug!(
-                                    "Received message {:?} ({} bytes)",
-                                    &frame_buffer[..x.len_to],
+                                    "Received websocket message {:?} ({} bytes)",
+                                    str::from_utf8(&frame_buffer[..x.len_to])
+                                        .unwrap_or("invalid text"),
                                     x.len_to
                                 );
                                 let ser = serde_json_core::from_slice::<MessageLedPattern>(
@@ -226,6 +228,11 @@ pub async fn websocket_task(
                                     true,
                                     &buf[..x],
                                     connect_buffer,
+                                );
+                                debug!(
+                                    "Sending new websocket message: {} ({} bytes)",
+                                    str::from_utf8(&buf[..x]).expect("invalid string"),
+                                    x
                                 );
                                 match res {
                                     Ok(count) => match socket.write(&connect_buffer[..count]).await
