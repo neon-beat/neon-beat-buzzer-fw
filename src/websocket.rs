@@ -118,6 +118,11 @@ pub async fn websocket_task(
 
     info!("Starting websocket task");
     loop {
+        if !stack.is_config_up() {
+            info!("Waiting for network configuration...");
+            stack.wait_config_up().await;
+        }
+        info!("Network configuration done");
         let remote = (Ipv4Address::new(192, 168, 66, 1), 8080);
         info!("Connecting to NBC TCP server...");
         let res = socket.connect(remote).await;

@@ -16,10 +16,9 @@ use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_net::StackResources;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Channel};
-use embassy_time::{Duration, Timer};
 use esp_hal::{clock::CpuClock, rmt::Rmt, rng::Rng, time::Rate, timer::timg::TimerGroup};
 use esp_radio::Controller;
-use log::{debug, info};
+use log::info;
 use static_cell::StaticCell;
 
 use crate::{
@@ -87,26 +86,6 @@ async fn main(spawner: Spawner) -> ! {
             button_channel.sender(),
         ))
         .expect("Failed to spawn button_task");
-
-    loop {
-        if stack.is_link_up() {
-            break;
-        }
-        Timer::after(Duration::from_millis(500)).await;
-    }
-
-    info!("Requesting DHCP lease...");
-    while stack.config_v4().is_none() {
-        Timer::after_secs(1).await;
-    }
-    info!("DHCP addressing complete");
-    debug!(
-        "IPv4 address: {}",
-        stack
-            .config_v4()
-            .expect("IP address should be available after wait loop")
-            .address
-    );
 
     let mut ws = Websocket::new(&spawner, stack, ws_channel.sender());
 
