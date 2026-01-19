@@ -108,8 +108,7 @@ async fn main(spawner: Spawner) -> ! {
             .address
     );
 
-    let mac = esp_hal::efuse::Efuse::mac_address();
-    let mut ws = Websocket::new(&spawner, stack, ws_channel.sender(), mac);
+    let mut ws = Websocket::new(&spawner, stack, ws_channel.sender());
 
     loop {
         match select(ws_channel.receive(), button_channel.receive()).await {

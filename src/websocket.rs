@@ -2,7 +2,7 @@ use crate::led_cmd::{LedCmd, MessageLedPattern};
 use alloc::format;
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
-use embassy_net::{Ipv4Address, Stack, tcp::TcpSocket};
+use embassy_net::{HardwareAddress, Ipv4Address, Stack, tcp::TcpSocket};
 use embassy_sync::{
     blocking_mutex::raw::NoopRawMutex,
     channel::{Channel, Receiver, Sender},
@@ -53,7 +53,6 @@ impl Websocket {
         spawner: &Spawner,
         stack: Stack<'static>,
         rx_channel: Sender<'static, NoopRawMutex, WebsocketEvent, 3>,
-        mac: [u8; 6],
     ) -> Self {
         let tx_channel: &'static mut _ = CHANNEL.init(Channel::new());
         let res = Websocket {
@@ -63,7 +62,7 @@ impl Websocket {
             stack,
             rx_channel,
             tx_channel.receiver(),
-            mac,
+            stack.hardware_address(),
         ));
         if let Err(e) = result {
             error!("Failed to spawn websocket task: {:?}", e);
@@ -84,7 +83,7 @@ impl Websocket {
 fn format_status_message(
     buf: &mut [u8],
     status: StatusMessage,
-    mac: &[u8; 6],
+    mac: &[u8],
 ) -> sj::ser::Result<usize> {
     let ident = StatusMessageData {
         r#type: status.into(),
@@ -106,7 +105,7 @@ pub async fn websocket_task(
     stack: Stack<'static>,
     rx_channel: Sender<'static, NoopRawMutex, WebsocketEvent, 3>,
     tx_channel: Receiver<'static, NoopRawMutex, StatusMessage, 3>,
-    mac: [u8; 6],
+    mac: HardwareAddress,
 ) {
     let rx_buffer = RX_BUFFER.init([0u8; BUF_SIZE]);
     let tx_buffer = TX_BUFFER.init([0u8; BUF_SIZE]);
@@ -225,7 +224,7 @@ pub async fn websocket_task(
                     },
                     Either::Second(x) => {
                         let mut buf = [0; 128];
-                        match format_status_message(&mut buf, x, &mac) {
+                        match format_status_message(&mut buf, x, mac.as_bytes()) {
                             Ok(x) => {
                                 let res = client.write(
                                     ws::WebSocketSendMessageType::Text,
