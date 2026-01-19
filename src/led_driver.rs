@@ -7,7 +7,7 @@ use embassy_sync::{
     blocking_mutex::raw::NoopRawMutex,
     channel::{Channel, Receiver, Sender},
 };
-use embassy_time::{Duration, Instant, Ticker, Timer};
+use embassy_time::{Duration, Instant, Timer};
 use esp_hal::{
     gpio::interconnect::PeripheralOutput,
     rmt::{PulseCode, Rmt},
@@ -18,7 +18,9 @@ use log::{error, info};
 use smart_leds::{RGB, SmartLedsWriteAsync, brightness};
 use static_cell::StaticCell;
 
-const MAX_BRIGHTNESS_TABLE_LEN: usize = 50;
+const MAX_BRIGHTNESS_TABLE_LEN: usize = 70;
+const WAVE_TICK_PERIOD_MS: u64 = 30;
+const MIN_WAVE_PERIOD_MS: u64 = MAX_BRIGHTNESS_TABLE_LEN as u64 * WAVE_TICK_PERIOD_MS;
 const MAX_BRIGHTNESS: u32 = 255;
 
 pub struct Led {
@@ -39,10 +41,7 @@ struct PatternProperties {
     brightness_table_len: usize,
 }
 
-fn compute_wave_table(
-    _period: Duration, // TODO: use period to adjust speed
-    _duty_cycle: u8,   // TODO: use duty cycle to adjust shape
-) -> [SubPatternProperties; MAX_BRIGHTNESS_TABLE_LEN] {
+fn compute_wave_table(period: Duration) -> [SubPatternProperties; MAX_BRIGHTNESS_TABLE_LEN] {
     let mut result: [SubPatternProperties; MAX_BRIGHTNESS_TABLE_LEN] =
         [Default::default(); MAX_BRIGHTNESS_TABLE_LEN];
 
@@ -52,8 +51,15 @@ fn compute_wave_table(
                 + cos(PI * (2.0 * index as f64 - MAX_BRIGHTNESS_TABLE_LEN as f64)
                     / MAX_BRIGHTNESS_TABLE_LEN as f64));
         subpattern.brightness = trunc(value) as u8;
-        subpattern.duration = Duration::from_millis(50);
+        subpattern.duration = Duration::from_millis(WAVE_TICK_PERIOD_MS);
     }
+
+    /* Make sure that the last value is 0, and make it last long enough so that it match the target
+     * period
+     */
+    result[MAX_BRIGHTNESS_TABLE_LEN - 1].brightness = 0;
+    result[MAX_BRIGHTNESS_TABLE_LEN - 1].duration =
+        period - Duration::from_millis(MAX_BRIGHTNESS_TABLE_LEN as u64 * WAVE_TICK_PERIOD_MS);
 
     result
 }
@@ -92,7 +98,12 @@ impl PatternProperties {
                 if dc > 100 {
                     return Err("Invalid duty cycle");
                 }
-                let table = compute_wave_table(p, dc);
+                if p < Duration::from_millis(MIN_WAVE_PERIOD_MS) {
+                    return Err(
+                        "Driver does not support wave period less than {MIN_WAVE_PERIOD_MS}",
+                    );
+                }
+                let table = compute_wave_table(p);
                 Ok(PatternProperties {
                     color: c,
                     duration: d,
@@ -142,25 +153,10 @@ async fn execute_off(
     cmd_channel.receive().await
 }
 
-enum TimingMechanism {
-    VariableTiming,      // For blink - uses Timer::after with different durations
-    FixedTiming(Ticker), // For wave - uses fixed ticker
-}
-
-impl TimingMechanism {
-    async fn wait(&mut self, duration: Duration) {
-        match self {
-            TimingMechanism::VariableTiming => Timer::after(duration).await,
-            TimingMechanism::FixedTiming(ticker) => ticker.next().await,
-        }
-    }
-}
-
 async fn execute_pattern(
     controller: &mut SmartLedsAdapterAsync<'static, 25>,
     cmd_channel: &Receiver<'static, NoopRawMutex, LedCmd, 1>,
     pattern: PatternProperties,
-    mut timer: TimingMechanism,
 ) -> LedCmd {
     let mut value = pattern.brightness_table[..pattern.brightness_table_len]
         .iter()
@@ -178,7 +174,7 @@ async fn execute_pattern(
             ))
             .await
             .expect("Failed to set led");
-        match select(cmd_channel.receive(), timer.wait(subpattern.duration)).await {
+        match select(cmd_channel.receive(), Timer::after(subpattern.duration)).await {
             Either::First(x) => return x,
             _ => {
                 if pattern.duration.as_millis() > 0
@@ -207,27 +203,14 @@ async fn led_task(
             LedCmd::Blink { .. } => match PatternProperties::new(&cmd) {
                 Ok(pattern) => {
                     info!("Starting blink pattern");
-                    cmd = execute_pattern(
-                        &mut controller,
-                        &cmd_channel,
-                        pattern,
-                        TimingMechanism::VariableTiming,
-                    )
-                    .await;
+                    cmd = execute_pattern(&mut controller, &cmd_channel, pattern).await;
                 }
                 Err(e) => error!("Received invalid blink command: {e}"),
             },
             LedCmd::Wave { .. } => match PatternProperties::new(&cmd) {
                 Ok(pattern) => {
                     info!("Starting wave pattern");
-                    let ticker_duration = pattern.brightness_table[0].duration;
-                    cmd = execute_pattern(
-                        &mut controller,
-                        &cmd_channel,
-                        pattern,
-                        TimingMechanism::FixedTiming(Ticker::every(ticker_duration)),
-                    )
-                    .await;
+                    cmd = execute_pattern(&mut controller, &cmd_channel, pattern).await;
                 }
                 Err(e) => error!("Received invalid wave command: {e}"),
             },
