@@ -1,7 +1,7 @@
 use embassy_net::Runner;
 use embassy_time::{Duration, Timer};
 use esp_radio::wifi::{
-    ClientConfig, ModeConfig, ScanConfig, WifiController, WifiDevice, WifiEvent, WifiStaState,
+    ClientConfig, ModeConfig, WifiController, WifiDevice, WifiEvent, WifiStaState,
 };
 use log::info;
 
@@ -39,16 +39,6 @@ pub async fn connection(mut controller: WifiController<'static>) {
                 .await
                 .expect("Failed to start radio stack");
             info!("Wifi started!");
-
-            info!("Scan");
-            let scan_config = ScanConfig::default().with_max(10);
-            let result = controller
-                .scan_with_config_async(scan_config)
-                .await
-                .expect("Failed to trigger wifi scan");
-            for ap in result {
-                info!("{:?}", ap);
-            }
         }
         info!("About to connect...");
 
