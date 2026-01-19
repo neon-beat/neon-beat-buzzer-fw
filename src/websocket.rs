@@ -2,7 +2,7 @@ use crate::led_cmd::{LedCmd, MessageLedPattern};
 use alloc::format;
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
-use embassy_net::{HardwareAddress, Ipv4Address, Stack, tcp::TcpSocket};
+use embassy_net::{HardwareAddress, Stack, tcp::TcpSocket};
 use embassy_sync::{
     blocking_mutex::raw::NoopRawMutex,
     channel::{Channel, Receiver, Sender},
@@ -15,6 +15,7 @@ use serde_json_core as sj;
 use static_cell::StaticCell;
 
 const BUF_SIZE: usize = 512;
+const WEBSOCKER_SERVER_PORT: u16 = 8080;
 
 pub enum StatusMessage {
     Identification,
@@ -123,7 +124,12 @@ pub async fn websocket_task(
             stack.wait_config_up().await;
         }
         info!("Network configuration done");
-        let remote = (Ipv4Address::new(192, 168, 66, 1), 8080);
+        let server_address = stack
+            .config_v4()
+            .expect("missing network configuration")
+            .gateway
+            .expect("missing gateway address");
+        let remote = (server_address, WEBSOCKER_SERVER_PORT);
         info!("Connecting to NBC TCP server...");
         let res = socket.connect(remote).await;
         if let Err(e) = res {
@@ -135,7 +141,7 @@ pub async fn websocket_task(
             info!("Connecting to NBC websocket server...");
             let websocket_options = ws::WebSocketOptions {
                 path: "/ws",
-                host: "192.168.66.1",
+                host: "",
                 origin: "http://localhost:1337",
                 sub_protocols: None,
                 additional_headers: None,
