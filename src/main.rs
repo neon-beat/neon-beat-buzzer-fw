@@ -19,7 +19,7 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Channel};
 use embassy_time::{Duration, Timer};
 use esp_hal::{clock::CpuClock, rmt::Rmt, rng::Rng, time::Rate, timer::timg::TimerGroup};
 use esp_radio::Controller;
-use log::info;
+use log::{debug, info};
 use static_cell::StaticCell;
 
 use crate::{
@@ -95,15 +95,18 @@ async fn main(spawner: Spawner) -> ! {
         Timer::after(Duration::from_millis(500)).await;
     }
 
-    info!("Waiting to get IP address...");
+    info!("Requesting DHCP lease...");
     while stack.config_v4().is_none() {
         Timer::after_secs(1).await;
     }
-    let address = stack
-        .config_v4()
-        .expect("IP address should be available after wait loop")
-        .address;
-    info!("Got IP: {address}");
+    info!("DHCP addressing complete");
+    debug!(
+        "IPv4 address: {}",
+        stack
+            .config_v4()
+            .expect("IP address should be available after wait loop")
+            .address
+    );
 
     let mac = esp_hal::efuse::Efuse::mac_address();
     let mut ws = Websocket::new(&spawner, stack, ws_channel.sender(), mac);

@@ -3,7 +3,7 @@ use embassy_time::{Duration, Timer};
 use esp_radio::wifi::{
     ClientConfig, ModeConfig, WifiController, WifiDevice, WifiEvent, WifiStaState,
 };
-use log::info;
+use log::{debug, info};
 
 // TODO: move those in config
 const SSID: &str = env!("SSID");
@@ -16,8 +16,7 @@ pub async fn net_task(mut runner: Runner<'static, WifiDevice<'static>>) {
 
 #[embassy_executor::task]
 pub async fn connection(mut controller: WifiController<'static>) {
-    info!("start connection task");
-    info!("Device capabilities: {:?}", controller.capabilities());
+    debug!("Device capabilities: {:?}", controller.capabilities());
     loop {
         if esp_radio::wifi::sta_state() == WifiStaState::Connected {
             // wait until we're no longer connected
@@ -33,17 +32,17 @@ pub async fn connection(mut controller: WifiController<'static>) {
             controller
                 .set_config(&client_config)
                 .expect("Failed to configure radio stack");
-            info!("Starting wifi");
+            info!("Starting wifi...");
             controller
                 .start_async()
                 .await
                 .expect("Failed to start radio stack");
-            info!("Wifi started!");
+            info!("Wifi started");
         }
-        info!("About to connect...");
+        info!("Connecting to NBC access point...");
 
         match controller.connect_async().await {
-            Ok(_) => info!("Wifi connected!"),
+            Ok(_) => info!("Connected to NBC access point"),
             Err(e) => {
                 info!("Failed to connect to wifi: {e:?}");
                 Timer::after(Duration::from_millis(5000)).await

@@ -72,9 +72,11 @@ impl Websocket {
     }
 
     pub async fn send_identify(&mut self) {
+        info!("Sending identify message");
         self.tx_channel.send(StatusMessage::Identification).await;
     }
     pub async fn send_button_pushed(&mut self) {
+        info!("Sending buzz message");
         self.tx_channel.send(StatusMessage::Buzz).await;
     }
 }
@@ -118,13 +120,15 @@ pub async fn websocket_task(
     info!("Starting websocket task");
     loop {
         let remote = (Ipv4Address::new(192, 168, 66, 1), 8080);
+        info!("Connecting to NBC TCP server...");
         let res = socket.connect(remote).await;
         if let Err(e) = res {
             error!("Failed to connect to TCP server: {:?}", e);
             continue;
         }
-        info!("Connected to TCP server");
+        info!("Connected to NBC TCP server");
         while socket.state() == embassy_net::tcp::State::Established {
+            info!("Connecting to NBC websocket server...");
             let websocket_options = ws::WebSocketOptions {
                 path: "/ws",
                 host: "192.168.66.1",
@@ -184,7 +188,7 @@ pub async fn websocket_task(
                                 match res {
                                     Ok(_) => {
                                         connected = true;
-                                        info!("Connected to WS server");
+                                        info!("Connected to NBC websocket server");
                                         rx_channel.send(WebsocketEvent::Connected).await;
                                     }
                                     Err(e) => error!("Can not accept connection: {:?}", e),
