@@ -5,9 +5,8 @@ use esp_radio::wifi::{
 };
 use log::{debug, info};
 
-// TODO: move those in config
-const SSID: &str = env!("SSID");
-const PASSWORD: &str = env!("PASSWORD");
+const SSID: &str = env!("NBC_SSID");
+const PASSWORD: &str = env!("NBC_PASSWORD");
 
 #[embassy_executor::task]
 pub async fn net_task(mut runner: Runner<'static, WifiDevice<'static>>) {

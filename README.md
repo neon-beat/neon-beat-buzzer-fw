@@ -44,6 +44,18 @@ $ cargo install espflash --locked
 $ cargo run
 ```
 
+## Customizing the firmware configuration
+
+The buzzer will try to connect to a properly configured NBC, thanks to a
+default configuration. It is possible to update parts of the parameters
+used to connect. To do so, edit the `NBC_XXX` variables in
+`.cargo/config.toml`:
+```ìni
+NBC_SSID="nb_ap"
+NBC_PASSWORD="nb_ap14789"
+NBC_BACKEND_PORT="8080"
+```
+
 ## Developpers' notes
 
 The project has been generated thanks to

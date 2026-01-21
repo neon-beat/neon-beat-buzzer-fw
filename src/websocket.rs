@@ -1,3 +1,5 @@
+use core::num::ParseIntError;
+
 use crate::led_cmd::{LedCmd, MessageLedPattern};
 use alloc::format;
 use embassy_executor::Spawner;
@@ -16,7 +18,8 @@ use serde_json_core as sj;
 use static_cell::StaticCell;
 
 const BUF_SIZE: usize = 512;
-const WEBSOCKER_SERVER_PORT: u16 = 8080;
+const WEBSOCKER_SERVER_PORT: Result<u16, ParseIntError> =
+    u16::from_str_radix(env!("NBC_BACKEND_PORT"), 10);
 
 pub enum StatusMessage {
     Identification,
@@ -132,7 +135,10 @@ pub async fn websocket_task(
             .expect("missing network configuration")
             .gateway
             .expect("missing gateway address");
-        let remote = (server_address, WEBSOCKER_SERVER_PORT);
+        let remote = (
+            server_address,
+            WEBSOCKER_SERVER_PORT.expect("Can not parse port"),
+        );
         info!("Connecting to NBC TCP server...");
         let res = socket.connect(remote).await;
         if let Err(e) = res {
