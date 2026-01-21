@@ -30,7 +30,7 @@ pub struct MessageLedPattern<'a> {
     pattern: MessageLedType<'a>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum LedCmd {
     Off,
     Blink {

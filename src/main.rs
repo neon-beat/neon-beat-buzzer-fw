@@ -16,9 +16,11 @@ use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_net::StackResources;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Channel};
+use embassy_time::Duration;
 use esp_hal::{clock::CpuClock, rmt::Rmt, rng::Rng, time::Rate, timer::timg::TimerGroup};
 use esp_radio::Controller;
 use log::info;
+use smart_leds::RGB;
 use static_cell::StaticCell;
 
 use crate::{
@@ -89,6 +91,17 @@ async fn main(spawner: Spawner) -> ! {
 
     let mut ws = Websocket::new(&spawner, stack, ws_channel.sender());
 
+    let connecting_blink = led_cmd::LedCmd::Blink {
+        color: RGB {
+            r: u8::MAX,
+            g: u8::MAX,
+            b: u8::MAX,
+        },
+        duration: Duration::from_secs(0),
+        period: Duration::from_secs(5),
+        duty_cycle: 2,
+    };
+    led.set(connecting_blink).await;
     loop {
         match select(ws_channel.receive(), button_channel.receive()).await {
             Either::First(WebsocketEvent::Connected) => {
@@ -96,7 +109,8 @@ async fn main(spawner: Spawner) -> ! {
                 ws.send_identify().await;
             }
             Either::First(WebsocketEvent::Disconnected) => {
-                info!("Buzzer is now disconnected from NBC")
+                info!("Buzzer is now disconnected from NBC");
+                led.set(connecting_blink).await;
             }
             Either::First(WebsocketEvent::Command(cmd)) => {
                 led.set(cmd).await;
