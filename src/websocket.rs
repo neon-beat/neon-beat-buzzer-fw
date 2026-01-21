@@ -196,6 +196,7 @@ pub async fn websocket_task(
                                     connect_buffer,
                                 )
                                 .expect("Failed to close websocket client");
+                            rx_channel.send(WebsocketEvent::Disconnected).await;
                             break;
                         }
                         Ok(count) => {
