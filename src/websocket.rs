@@ -7,6 +7,7 @@ use embassy_sync::{
     blocking_mutex::raw::NoopRawMutex,
     channel::{Channel, Receiver, Sender},
 };
+use embassy_time::Duration;
 use embedded_websocket as ws;
 use esp_hal::rng::Rng;
 use log::{debug, error, info, warn};
@@ -116,6 +117,8 @@ pub async fn websocket_task(
     let mut socket = TcpSocket::new(stack, rx_buffer, tx_buffer);
     let mut client = ws::WebSocketClient::new_client(Rng::new());
     let mut connected: bool = false;
+    socket.set_timeout(Some(Duration::from_secs(8)));
+    socket.set_keep_alive(Some(Duration::from_secs(5)));
 
     info!("Starting websocket task");
     loop {
@@ -184,7 +187,16 @@ pub async fn websocket_task(
                         }
                         Err(e) => {
                             error!("Can not read socket: {:?}", e);
-                            continue;
+                            socket.close();
+                            connected = false;
+                            client
+                                .close(
+                                    ws::WebSocketCloseStatusCode::EndpointUnavailable,
+                                    None,
+                                    connect_buffer,
+                                )
+                                .expect("Failed to close websocket client");
+                            break;
                         }
                         Ok(count) => {
                             debug!(
