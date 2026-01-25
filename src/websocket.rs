@@ -1,7 +1,6 @@
 use core::num::ParseIntError;
 
 use crate::led_cmd::{LedCmd, MessageLedPattern};
-use alloc::format;
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_net::{HardwareAddress, Stack, tcp::TcpSocket};
@@ -93,12 +92,15 @@ fn format_status_message(
     status: StatusMessage,
     mac: &[u8],
 ) -> sj::ser::Result<usize> {
+    const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
+    let mut mac_buf = [0u8; 12];
+    for (i, &byte) in mac.iter().enumerate().take(6) {
+        mac_buf[i * 2] = HEX_CHARS[(byte >> 4) as usize];
+        mac_buf[i * 2 + 1] = HEX_CHARS[(byte & 0xf) as usize];
+    }
     let ident = StatusMessageData {
         r#type: status.into(),
-        id: &format!(
-            "{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
-        ),
+        id: core::str::from_utf8(&mac_buf).unwrap_or("invalid_mac"),
     };
     sj::to_slice(&ident, buf)
 }
