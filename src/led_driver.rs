@@ -146,10 +146,12 @@ async fn execute_off(
     controller: &mut SmartLedsAdapterAsync<'static, 25>,
     cmd_channel: &Receiver<'static, NoopRawMutex, LedCmd, 1>,
 ) -> LedCmd {
-    controller
+    if let Err(e) = controller
         .write(brightness([RGB::new(0, 0, 0)].into_iter(), 0))
         .await
-        .expect("Failed to set led off");
+    {
+        error!("Failed to set led off: {:?}", e);
+    }
     cmd_channel.receive().await
 }
 
@@ -167,13 +169,15 @@ async fn execute_pattern(
         let subpattern = value
             .next()
             .expect("brightness_table_len > 0 guarantees cycle never ends");
-        controller
+        if let Err(e) = controller
             .write(brightness(
                 [pattern.color].into_iter(),
                 subpattern.brightness,
             ))
             .await
-            .expect("Failed to set led");
+        {
+            error!("Failed to set led: {:?}", e);
+        }
         match select(cmd_channel.receive(), Timer::after(subpattern.duration)).await {
             Either::First(x) => return x,
             _ => {
@@ -193,10 +197,12 @@ async fn led_task(
     mut controller: SmartLedsAdapterAsync<'static, 25>,
     cmd_channel: Receiver<'static, NoopRawMutex, LedCmd, 1>,
 ) {
-    controller
+    if let Err(e) = controller
         .write(brightness([RGB::new(0, 0, 0)].into_iter(), 0))
         .await
-        .expect("Failed to set led off");
+    {
+        error!("Failed to initialize led to off state: {:?}", e);
+    }
     let mut cmd = cmd_channel.receive().await;
     loop {
         match cmd {
