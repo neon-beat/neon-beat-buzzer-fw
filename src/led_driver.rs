@@ -1,5 +1,6 @@
 use core::f64::consts::PI;
 
+use crate::error::PatternError;
 use crate::led_cmd::LedCmd;
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
@@ -65,7 +66,7 @@ fn compute_wave_table(period: Duration) -> [SubPatternProperties; MAX_BRIGHTNESS
 }
 
 impl PatternProperties {
-    fn new(value: &LedCmd) -> Result<Self, &'static str> {
+    fn new(value: &LedCmd) -> Result<Self, PatternError> {
         match *value {
             LedCmd::Blink {
                 color: c,
@@ -74,7 +75,7 @@ impl PatternProperties {
                 duty_cycle: dc,
             } => {
                 if dc > 100 {
-                    return Err("Invalid duty cycle");
+                    return Err(PatternError::InvalidDutyCycle);
                 }
                 let mut table: [SubPatternProperties; MAX_BRIGHTNESS_TABLE_LEN] =
                     [Default::default(); MAX_BRIGHTNESS_TABLE_LEN];
@@ -96,12 +97,12 @@ impl PatternProperties {
                 duty_cycle: dc,
             } => {
                 if dc > 100 {
-                    return Err("Invalid duty cycle");
+                    return Err(PatternError::InvalidDutyCycle);
                 }
                 if p < Duration::from_millis(MIN_WAVE_PERIOD_MS) {
-                    return Err(
-                        "Driver does not support wave period less than {MIN_WAVE_PERIOD_MS}",
-                    );
+                    return Err(PatternError::WavePeriodTooShort {
+                        min_ms: MIN_WAVE_PERIOD_MS,
+                    });
                 }
                 let table = compute_wave_table(p);
                 Ok(PatternProperties {
@@ -111,7 +112,7 @@ impl PatternProperties {
                     brightness_table_len: MAX_BRIGHTNESS_TABLE_LEN,
                 })
             }
-            _ => Err("Unsupported pattern"),
+            _ => Err(PatternError::UnsupportedCommand),
         }
     }
 }

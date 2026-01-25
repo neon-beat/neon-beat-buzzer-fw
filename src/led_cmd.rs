@@ -4,6 +4,8 @@ use log::warn;
 use serde::Deserialize;
 use smart_leds::RGB;
 
+use crate::error::PatternError;
+
 #[derive(Deserialize, Debug)]
 struct MessageLedColor {
     h: f32,
@@ -78,14 +80,14 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> RGB<u8> {
 }
 
 impl TryFrom<MessageLedPattern<'_>> for LedCmd {
-    type Error = &'static str;
+    type Error = PatternError;
     fn try_from(value: MessageLedPattern<'_>) -> Result<Self, Self::Error> {
         if value.pattern.r#type == "off" {
             return Ok(LedCmd::Off);
         }
-        let details = value.pattern.details.ok_or("missing pattern details")?;
-        if details.dc > 1.0 || details.dc < 0.0 {
-            return Err("Invalid duty cycle");
+        let details = value.pattern.details.ok_or(PatternError::MissingDetails)?;
+        if !(0.0..=1.0).contains(&details.dc) {
+            return Err(PatternError::InvalidDutyCycle);
         }
         let rgb = hsv_to_rgb(details.color.h, details.color.s, details.color.v);
         match value.pattern.r#type {
@@ -101,7 +103,7 @@ impl TryFrom<MessageLedPattern<'_>> for LedCmd {
                 period: Duration::from_millis(details.period_ms.into()),
                 duty_cycle: (details.dc * 100.0) as u8,
             }),
-            _ => Err("Invalid pattern type"),
+            _ => Err(PatternError::InvalidPatternType),
         }
     }
 }

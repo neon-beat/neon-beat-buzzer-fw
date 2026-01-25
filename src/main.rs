@@ -7,6 +7,7 @@
 )]
 
 mod button;
+mod error;
 mod led_cmd;
 mod led_driver;
 mod network;
