@@ -18,7 +18,7 @@ use serde_json_core as sj;
 use static_cell::StaticCell;
 
 const BUF_SIZE: usize = 512;
-const WEBSOCKER_SERVER_PORT: Result<u16, ParseIntError> =
+const WEBSOCKET_SERVER_PORT: Result<u16, ParseIntError> =
     u16::from_str_radix(env!("NBC_BACKEND_PORT"), 10);
 
 pub enum StatusMessage {
@@ -130,15 +130,19 @@ pub async fn websocket_task(
             stack.wait_config_up().await;
         }
         info!("Network configuration done");
-        let server_address = stack
-            .config_v4()
-            .expect("missing network configuration")
-            .gateway
-            .expect("missing gateway address");
-        let remote = (
-            server_address,
-            WEBSOCKER_SERVER_PORT.expect("Can not parse port"),
-        );
+        let Some(config) = stack.config_v4() else {
+            error!("Missing network configuration after wait_config_up");
+            continue;
+        };
+        let Some(server_address) = config.gateway else {
+            error!("Missing gateway address in network configuration");
+            continue;
+        };
+        let Ok(port) = WEBSOCKET_SERVER_PORT else {
+            error!("Invalid server port configuration");
+            continue;
+        };
+        let remote = (server_address, port);
         info!("Connecting to NBC TCP server...");
         let res = socket.connect(remote).await;
         if let Err(e) = res {
@@ -195,13 +199,13 @@ pub async fn websocket_task(
                             error!("Can not read socket: {:?}", e);
                             socket.close();
                             connected = false;
-                            client
-                                .close(
-                                    ws::WebSocketCloseStatusCode::EndpointUnavailable,
-                                    None,
-                                    connect_buffer,
-                                )
-                                .expect("Failed to close websocket client");
+                            if let Err(e) = client.close(
+                                ws::WebSocketCloseStatusCode::EndpointUnavailable,
+                                None,
+                                connect_buffer,
+                            ) {
+                                warn!("Failed to close websocket client: {:?}", e);
+                            }
                             rx_channel.send(WebsocketEvent::Disconnected).await;
                             break;
                         }
@@ -264,7 +268,7 @@ pub async fn websocket_task(
                                 );
                                 debug!(
                                     "Sending new websocket message: {} ({} bytes)",
-                                    str::from_utf8(&buf[..x]).expect("invalid string"),
+                                    str::from_utf8(&buf[..x]).unwrap_or("<invalid utf8>"),
                                     x
                                 );
                                 match res {
