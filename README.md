@@ -47,13 +47,20 @@ $ cargo run
 ## Customizing the firmware configuration
 
 The buzzer will try to connect to a properly configured NBC, thanks to a
-default configuration. It is possible to update parts of the parameters
-used to connect. To do so, edit the `NBC_XXX` variables in
-`.cargo/config.toml`:
-```ìni
-NBC_SSID="nb_ap"
-NBC_PASSWORD="nb_ap14789"
-NBC_BACKEND_PORT="8080"
+default configuration. The following environment variables control the
+connection parameters:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NBC_SSID` | WiFi network name to connect to | `nb_ap` |
+| `NBC_PASSWORD` | WiFi network password | `nb_ap14789` |
+| `NBC_BACKEND_PORT` | WebSocket server port on the NBC | `8080` |
+
+Default values are defined in `.cargo/config.toml`. To override them,
+set the environment variables before running cargo:
+
+```sh
+NBC_SSID="my_network" NBC_PASSWORD="my_password" cargo run
 ```
 
 ## Developpers' notes
