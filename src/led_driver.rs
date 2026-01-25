@@ -46,7 +46,7 @@ fn compute_wave_table(period: Duration) -> [SubPatternProperties; MAX_BRIGHTNESS
     let mut result: [SubPatternProperties; MAX_BRIGHTNESS_TABLE_LEN] =
         [Default::default(); MAX_BRIGHTNESS_TABLE_LEN];
 
-    for (index, subpattern) in result.iter_mut().enumerate().take(MAX_BRIGHTNESS_TABLE_LEN) {
+    for (index, subpattern) in result.iter_mut().enumerate() {
         let value: f64 = MAX_BRIGHTNESS as f64 / 2.0
             * (1.0
                 + cos(PI * (2.0 * index as f64 - MAX_BRIGHTNESS_TABLE_LEN as f64)
