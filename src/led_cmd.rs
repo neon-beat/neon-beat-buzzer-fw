@@ -67,7 +67,7 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> RGB<u8> {
         240.0..300.0 => (x, 0.0, c),
         300.0..360.0 => (c, 0.0, x),
         _ => {
-            warn!("Invalid h value !");
+            warn!("Invalid h value!");
             (0.0, 0.0, 0.0)
         }
     };

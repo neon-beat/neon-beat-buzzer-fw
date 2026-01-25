@@ -13,7 +13,7 @@ pub async fn button_task(pin: AnyPin<'static>, sender: Sender<'static, NoopRawMu
     loop {
         button.wait_for_falling_edge().await;
         if !pushed {
-            info!("Button pushed !");
+            info!("Button pushed!");
             sender.send(true).await;
         }
         /* Quick and dirty deboucing, enough as long as we only need to
