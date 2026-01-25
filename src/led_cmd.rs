@@ -1,5 +1,6 @@
 use embassy_time::Duration;
 use libm::{fabsf, fmodf};
+use log::warn;
 use serde::Deserialize;
 use smart_leds::RGB;
 
@@ -63,7 +64,10 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> RGB<u8> {
         180.0..240.0 => (0.0, x, c),
         240.0..300.0 => (x, 0.0, c),
         300.0..360.0 => (c, 0.0, x),
-        _ => panic!("Invalid h value !"),
+        _ => {
+            warn!("Invalid h value !");
+            (0.0, 0.0, 0.0)
+        }
     };
 
     RGB::new(
