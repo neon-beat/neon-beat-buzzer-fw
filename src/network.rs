@@ -28,14 +28,17 @@ pub async fn connection(mut controller: WifiController<'static>) {
                     .with_ssid(SSID.into())
                     .with_password(PASSWORD.into()),
             );
-            controller
-                .set_config(&client_config)
-                .expect("Failed to configure radio stack");
+            if let Err(e) = controller.set_config(&client_config) {
+                info!("Failed to configure radio stack: {e:?}, retrying...");
+                Timer::after(Duration::from_millis(1000)).await;
+                continue;
+            }
             info!("Starting wifi...");
-            controller
-                .start_async()
-                .await
-                .expect("Failed to start radio stack");
+            if let Err(e) = controller.start_async().await {
+                info!("Failed to start radio stack: {e:?}, retrying...");
+                Timer::after(Duration::from_millis(1000)).await;
+                continue;
+            }
             info!("Wifi started");
         }
         info!("Connecting to NBC access point...");
