@@ -105,6 +105,67 @@ static TX_BUFFER: StaticCell<[u8; BUF_SIZE]> = StaticCell::new();
 static CONNECT_BUFFER: StaticCell<[u8; BUF_SIZE]> = StaticCell::new();
 static FRAME_BUFFER: StaticCell<[u8; BUF_SIZE]> = StaticCell::new();
 
+async fn websocket_handshake<'a>(
+    client: &mut ws::WebSocketClient<Rng>,
+    socket: &mut TcpSocket<'a>,
+    buffer: &mut [u8],
+) -> Result<ws::WebSocketKey, &'static str> {
+    let websocket_options = ws::WebSocketOptions {
+        path: "/ws",
+        host: "",
+        origin: "http://localhost:1337",
+        sub_protocols: None,
+        additional_headers: None,
+    };
+    let (count, key) = client
+        .client_connect(&websocket_options, buffer)
+        .map_err(|_| "failed to generate connect message")?;
+    socket
+        .write(&buffer[..count])
+        .await
+        .map_err(|_| "failed to write handshake")?;
+    Ok(key)
+}
+
+async fn send_status_message<'a>(
+    client: &mut ws::WebSocketClient<Rng>,
+    socket: &mut TcpSocket<'a>,
+    buffer: &mut [u8],
+    status: StatusMessage,
+    mac: &[u8],
+) {
+    let mut msg_buf = [0u8; 128];
+    let prepare_result: Result<usize, &'static str> = (|| {
+        let len =
+            format_status_message(&mut msg_buf, status, mac).map_err(|_| "failed to serialize")?;
+        debug!(
+            "Sending new websocket message: {} ({} bytes)",
+            core::str::from_utf8(&msg_buf[..len]).unwrap_or("<invalid utf8>"),
+            len
+        );
+        let count = client
+            .write(
+                ws::WebSocketSendMessageType::Text,
+                true,
+                &msg_buf[..len],
+                buffer,
+            )
+            .map_err(|_| "failed to encode websocket frame")?;
+        Ok(count)
+    })();
+
+    match prepare_result {
+        Ok(count) => {
+            if let Err(e) = socket.write(&buffer[..count]).await {
+                error!("Failed to send message: {:?}", e);
+            } else {
+                debug!("Message sent");
+            }
+        }
+        Err(e) => error!("Failed to prepare message: {e}"),
+    }
+}
+
 #[embassy_executor::task]
 pub async fn websocket_task(
     stack: Stack<'static>,
@@ -152,31 +213,13 @@ pub async fn websocket_task(
         info!("Connected to NBC TCP server");
         while socket.state() == embassy_net::tcp::State::Established {
             info!("Connecting to NBC websocket server...");
-            let websocket_options = ws::WebSocketOptions {
-                path: "/ws",
-                host: "",
-                origin: "http://localhost:1337",
-                sub_protocols: None,
-                additional_headers: None,
-            };
-            let res = client.client_connect(&websocket_options, connect_buffer);
-            let ws_key: ws::WebSocketKey;
-            match res {
+            let ws_key = match websocket_handshake(&mut client, &mut socket, connect_buffer).await {
+                Ok(key) => key,
                 Err(e) => {
-                    error!("Failed to generate connect message: {:?}", e);
+                    error!("WebSocket handshake failed: {e}");
                     continue;
                 }
-                Ok((count, key)) => {
-                    let res = socket.write(&connect_buffer[..count]).await;
-                    match res {
-                        Err(e) => {
-                            error!("Failed to connect to websocket server: {:?}", e);
-                            continue;
-                        }
-                        Ok(_) => ws_key = key,
-                    }
-                }
-            }
+            };
             loop {
                 match select(socket.read(connect_buffer), tx_channel.receive()).await {
                     Either::First(x) => match x {
@@ -217,8 +260,7 @@ pub async fn websocket_task(
                                 count
                             );
                             if !connected {
-                                let res = client.client_accept(&ws_key, &connect_buffer[..count]);
-                                match res {
+                                match client.client_accept(&ws_key, &connect_buffer[..count]) {
                                     Ok(_) => {
                                         connected = true;
                                         info!("Connected to NBC websocket server");
@@ -226,27 +268,24 @@ pub async fn websocket_task(
                                     }
                                     Err(e) => error!("Can not accept connection: {:?}", e),
                                 }
-                            } else if let Ok(x) = client.read(connect_buffer, frame_buffer) {
-                                debug!("WS message parsing status: {:?}", x);
+                            } else if let Ok(ws_frame) = client.read(connect_buffer, frame_buffer) {
+                                debug!("WS message parsing status: {:?}", ws_frame);
                                 debug!(
                                     "Received websocket message {:?} ({} bytes)",
-                                    str::from_utf8(&frame_buffer[..x.len_to])
+                                    str::from_utf8(&frame_buffer[..ws_frame.len_to])
                                         .unwrap_or("invalid text"),
-                                    x.len_to
+                                    ws_frame.len_to
                                 );
-                                let ser = serde_json_core::from_slice::<MessageLedPattern>(
-                                    &frame_buffer[..x.len_to],
-                                );
-                                match ser {
-                                    Ok((data, _)) => match data.try_into() {
-                                        Ok(cmd) => {
-                                            rx_channel.send(WebsocketEvent::Command(cmd)).await
-                                        }
-                                        Err(e) => warn!("Failed to decode received command: {e}"),
-                                    },
-                                    Err(e) => {
-                                        warn!("Failed to decode received json message: {e}")
-                                    }
+                                let cmd = serde_json_core::from_slice::<MessageLedPattern>(
+                                    &frame_buffer[..ws_frame.len_to],
+                                )
+                                .map_err(|e| warn!("Failed to decode JSON message: {e}"))
+                                .and_then(|(data, _)| {
+                                    data.try_into()
+                                        .map_err(|e| warn!("Failed to decode command: {e}"))
+                                });
+                                if let Ok(cmd) = cmd {
+                                    rx_channel.send(WebsocketEvent::Command(cmd)).await;
                                 }
                             } else {
                                 error!(
@@ -256,32 +295,15 @@ pub async fn websocket_task(
                             }
                         }
                     },
-                    Either::Second(x) => {
-                        let mut buf = [0; 128];
-                        match format_status_message(&mut buf, x, mac.as_bytes()) {
-                            Ok(x) => {
-                                let res = client.write(
-                                    ws::WebSocketSendMessageType::Text,
-                                    true,
-                                    &buf[..x],
-                                    connect_buffer,
-                                );
-                                debug!(
-                                    "Sending new websocket message: {} ({} bytes)",
-                                    str::from_utf8(&buf[..x]).unwrap_or("<invalid utf8>"),
-                                    x
-                                );
-                                match res {
-                                    Ok(count) => match socket.write(&connect_buffer[..count]).await
-                                    {
-                                        Err(e) => error!("Failed to send message: {:?}", e),
-                                        _ => debug!("Message sent"),
-                                    },
-                                    Err(e) => error!("Failed to send message: {:?}", e),
-                                }
-                            }
-                            Err(e) => error!("Failed to serialize message: {e}"),
-                        }
+                    Either::Second(status) => {
+                        send_status_message(
+                            &mut client,
+                            &mut socket,
+                            connect_buffer,
+                            status,
+                            mac.as_bytes(),
+                        )
+                        .await;
                     }
                 }
             }
