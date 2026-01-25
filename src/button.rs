@@ -3,6 +3,8 @@ use embassy_time::Timer;
 use esp_hal::gpio::{AnyPin, Input, InputConfig, Pull};
 use log::info;
 
+const DEBOUNCE_MS: u64 = 100;
+
 #[embassy_executor::task]
 pub async fn button_task(pin: AnyPin<'static>, sender: Sender<'static, NoopRawMutex, bool, 1>) {
     let config = InputConfig::default().with_pull(Pull::Up);
@@ -17,7 +19,7 @@ pub async fn button_task(pin: AnyPin<'static>, sender: Sender<'static, NoopRawMu
         /* Quick and dirty deboucing, enough as long as we only need to
          * detect single, short presses
          */
-        Timer::after_millis(100).await;
+        Timer::after_millis(DEBOUNCE_MS).await;
         pushed = button.is_low();
     }
 }

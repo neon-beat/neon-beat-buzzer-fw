@@ -18,6 +18,9 @@ use serde_json_core as sj;
 use static_cell::StaticCell;
 
 const BUF_SIZE: usize = 512;
+const MSG_BUF_SIZE: usize = 128;
+const SOCKET_TIMEOUT_SECS: u64 = 8;
+const SOCKET_KEEPALIVE_SECS: u64 = 5;
 const WEBSOCKET_SERVER_PORT: Result<u16, ParseIntError> =
     u16::from_str_radix(env!("NBC_BACKEND_PORT"), 10);
 
@@ -134,7 +137,7 @@ async fn send_status_message<'a>(
     status: StatusMessage,
     mac: &[u8],
 ) {
-    let mut msg_buf = [0u8; 128];
+    let mut msg_buf = [0u8; MSG_BUF_SIZE];
     let prepare_result: Result<usize, &'static str> = (|| {
         let len =
             format_status_message(&mut msg_buf, status, mac).map_err(|_| "failed to serialize")?;
@@ -181,8 +184,8 @@ pub async fn websocket_task(
     let mut socket = TcpSocket::new(stack, rx_buffer, tx_buffer);
     let mut client = ws::WebSocketClient::new_client(Rng::new());
     let mut connected: bool = false;
-    socket.set_timeout(Some(Duration::from_secs(8)));
-    socket.set_keep_alive(Some(Duration::from_secs(5)));
+    socket.set_timeout(Some(Duration::from_secs(SOCKET_TIMEOUT_SECS)));
+    socket.set_keep_alive(Some(Duration::from_secs(SOCKET_KEEPALIVE_SECS)));
 
     info!("Starting websocket task");
     loop {
