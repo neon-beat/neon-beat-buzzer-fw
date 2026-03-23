@@ -78,7 +78,7 @@ esp-rtos = { git = "https://github.com/esp-rs/esp-hal", rev="223815270092663682a
 esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", rev="223815270092663682a151a1b285665587a3d5dd" }
 esp-alloc = { git = "https://github.com/esp-rs/esp-hal", rev="223815270092663682a151a1b285665587a3d5dd" }
 esp-radio = { git = "https://github.com/esp-rs/esp-hal", rev="223815270092663682a151a1b285665587a3d5dd" }
-esp-hal-smartled = { path = "../esp-hal-community/esp-hal-smartled" }
+esp-hal-smartled = { git = "https://github.com/Tropicao/esp-hal-community", rev="96dda7ac3490e2198e7556d3ed9004acfa1f537d"}
 
 [profile.dev]
 # Rust debug is too slow.
