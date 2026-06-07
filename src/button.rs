@@ -8,18 +8,14 @@ const DEBOUNCE_MS: u64 = 100;
 #[embassy_executor::task]
 pub async fn button_task(pin: AnyPin<'static>, sender: Sender<'static, NoopRawMutex, bool, 1>) {
     let config = InputConfig::default().with_pull(Pull::Up);
-    let mut pushed = false;
     let mut button = Input::new(pin, config);
     loop {
         button.wait_for_falling_edge().await;
-        if !pushed {
-            info!("Button pushed!");
-            sender.send(true).await;
-        }
+        info!("Button pushed !");
+        sender.send(true).await;
         /* Quick and dirty deboucing, enough as long as we only need to
          * detect single, short presses
          */
         Timer::after_millis(DEBOUNCE_MS).await;
-        pushed = button.is_low();
     }
 }
