@@ -127,12 +127,13 @@ impl Led {
     {
         let channel: &'static mut _ = LED_CMD_CHANNEL.init(Channel::new());
         let buffer: &'static mut _ = ADAPTER_BUFFER.init(smart_led_buffer!(1));
-        spawner
-            .spawn(led_task(
+        spawner.spawn(
+            led_task(
                 sl::SmartLedsAdapterAsync::new(rmt.channel0, gpio, buffer),
                 channel.receiver(),
-            ))
-            .expect("Failed to start led task");
+            )
+            .expect("Failed to start led task"),
+        );
         Led {
             cmd_channel: channel.sender(),
         }

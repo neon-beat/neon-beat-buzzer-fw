@@ -65,15 +65,15 @@ impl Websocket {
         let res = Websocket {
             tx_channel: tx_channel.sender(),
         };
-        let result = spawner.spawn(websocket_task(
-            stack,
-            rx_channel,
-            tx_channel.receiver(),
-            stack.hardware_address(),
-        ));
-        if let Err(e) = result {
-            error!("Failed to spawn websocket task: {:?}", e);
-        }
+        spawner.spawn(
+            websocket_task(
+                stack,
+                rx_channel,
+                tx_channel.receiver(),
+                stack.hardware_address(),
+            )
+            .expect("Failed to spawn websocket task"),
+        );
         res
     }
 

@@ -19,7 +19,7 @@ use embassy_net::StackResources;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Channel};
 use embassy_time::Duration;
 use esp_hal::{clock::CpuClock, rmt::Rmt, rng::Rng, time::Rate, timer::timg::TimerGroup};
-use esp_radio::Controller;
+use esp_radio::wifi::ControllerConfig;
 use log::info;
 use smart_leds::RGB;
 use static_cell::StaticCell;
@@ -43,7 +43,6 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 static WS_CHANNEL: StaticCell<Channel<NoopRawMutex, WebsocketEvent, 3>> = StaticCell::new();
 static BUTTON_CHANNEL: StaticCell<Channel<NoopRawMutex, bool, 1>> = StaticCell::new();
-static RADIO_CELL: StaticCell<Controller<'static>> = StaticCell::new();
 static RESOURCES_CELL: StaticCell<StackResources<3>> = StaticCell::new();
 
 #[esp_rtos::main]
@@ -59,36 +58,27 @@ async fn main(spawner: Spawner) -> ! {
         esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
     esp_rtos::start(timg0.timer0, sw_interrupt.software_interrupt0);
 
-    let radio_init =
-        RADIO_CELL.init(esp_radio::init().expect("Failed to initialize Wi-Fi/BLE controller"));
     let resources = RESOURCES_CELL.init(StackResources::<3>::new());
     let button_channel: &'static mut _ = BUTTON_CHANNEL.init(Channel::new());
     let ws_channel: &'static mut _ = WS_CHANNEL.init(Channel::new());
 
-    let (wifi_controller, wifi_interfaces) =
-        esp_radio::wifi::new(radio_init, peripherals.WIFI, Default::default())
+    let (wifi_controller, wifi_interface) =
+        esp_radio::wifi::new(peripherals.WIFI, ControllerConfig::default())
             .expect("Failed to initialize Wi-Fi controller");
     info!("Buzzer initialized");
     let config = embassy_net::Config::dhcpv4(Default::default());
     let rng = Rng::new();
     let seed = (rng.random() as u64) << 32 | rng.random() as u64;
-    let (stack, runner) = embassy_net::new(wifi_interfaces.sta, config, resources, seed);
+    let (stack, runner) = embassy_net::new(wifi_interface.station, config, resources, seed);
     let rmt =
         Rmt::new(peripherals.RMT, Rate::from_mhz(80)).expect("Failed to initialize RMT controller");
     let mut led = Led::new(&spawner, rmt.into_async(), peripherals.GPIO3);
-    spawner
-        .spawn(connection(wifi_controller))
-        .expect("Failed to spawn connection task");
-    spawner
-        .spawn(net_task(runner))
-        .expect("Failed to spawn net_task");
-
-    spawner
-        .spawn(button_task(
-            peripherals.GPIO2.into(),
-            button_channel.sender(),
-        ))
-        .expect("Failed to spawn button_task");
+    spawner.spawn(connection(wifi_controller).expect("Failed to spawn wifi task"));
+    spawner.spawn(net_task(runner).expect("Failed to spawn network task"));
+    spawner.spawn(
+        button_task(peripherals.GPIO2.into(), button_channel.sender())
+            .expect("Failed to spawn button task"),
+    );
 
     let mut ws = Websocket::new(&spawner, stack, ws_channel.sender());
 
