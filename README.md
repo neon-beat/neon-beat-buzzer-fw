@@ -59,6 +59,9 @@ assembled by following the diagram and instructions below:
   to raise the voltage to the level needed by the LED
 - The LED is powered by the Boost, and driven by another GPIO from the main
   module (by default, GPIO3)
+- Xiao esp32c3 modules are delivered with a patch antenna, this one can be
+  applied inside the buzzer casing, ideally not too close from the rest of
+  the electronic to prevent electromagnetic disturbance.
 
 ## Build and run the project
 
