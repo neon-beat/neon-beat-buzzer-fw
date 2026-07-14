@@ -32,6 +32,34 @@ There is still some pending tasks:
 
 The project is actually a Rust rewrite of a former C firmware which can be
 found at https://github.com/tropicao/neon-beat-buzzer
+
+## Buzzer architecture
+
+The Neon Beat buzzer is built with very basic electronic parts that can be
+assembled by following the diagram and instructions below:
+
+![wiring](images/wiring.drawio.png)
+
+- The buzzer core is a [Xiao
+  esp32c3](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/) from
+  Seeed Studio. This module is especially fitting for this project as it
+  comes both with an antenna connector and a battery charger included in
+  the module.
+- The module is powered by a 3.7V LiPo battery, soldered directly onto the
+  pads on the bottom side of the module. For the record, a 320mAh LiPo
+  battery can support a buzzer for about one hour, based on rough
+  estimates.
+- There's an On/Off switch between the battery and the module to allow
+  powering on/off the buzzer.
+- The main arcade button needs to be connected to one of the module GPIOs
+  (by default, GPIO2), and ground
+- The buzzer contains a WS2814 LED, which needs 5V, so the design includes
+  a [5V
+  boost](https://www.amazon.fr/dp/B0D2CSHWC4?ref=ppx_yo2ov_dt_b_fed_asin_title)
+  to raise the voltage to the level needed by the LED
+- The LED is powered by the Boost, and driven by another GPIO from the main
+  module (by default, GPIO3)
+
 ## Build and run the project
 
 - install [rustup](https://rustup.rs/)
