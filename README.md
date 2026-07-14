@@ -1,5 +1,9 @@
 # Neon Beat Buzzer
 
+![button](images/buzzer.jpg)
+
+## Brief
+
 This repository contains the Neon Beat Buzzers firmware, written in no_std
 rust. This firmware aims to run on an esp32c3 target to support the
 following features involved in a Neon Beat game:
