@@ -63,6 +63,9 @@ assembled by following the diagram and instructions below:
   applied inside the buzzer casing, ideally not too close from the rest of
   the electronic to prevent electromagnetic disturbance.
 
+The project also provides a casing design files, available in [a dedicated
+repository](https://github.com/neon-beat/neon-beat-buzzer-casing)
+
 ## Build and run the project
 
 - install [rustup](https://rustup.rs/)
