@@ -16,12 +16,13 @@ following features involved in a Neon Beat game:
 
 ## Project status
 
-This Neon Beat Buzzer is still under active development. The current scope
-of the code base supports almost all needed features for a Neon Beat game.
+This Neon Beat Buzzer firmware has reached a level of maturity allowing to
+play Neon Beat games without issues; the current scope of the code base
+supports all needed features for a game.
 There is still some pending tasks:
 - some minor features are currently not supported, e.g interpreting some
   specific pattern duration/period/duty cycle for leds
-- the code base will still receive quite some refactoring:
+- the code base could still receive quite some refactoring:
   - more idiomatic Rust
   - better configuration management
   - better error handling
